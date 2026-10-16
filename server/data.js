@@ -21,19 +21,11 @@ export function createPortalData({ store, sync }) {
     listClients: () => store.listClients(),
     getClient: (clientId) => store.getClient(clientId),
 
-    // Newest completed first, with counts of the notes and photos this client may see.
-    // Only the fields clients are meant to see.
+    // Newest completed first. Only the fields clients are meant to see.
     jobsForClient(clientId, settings) {
-      const count = (rows, mode) => {
-        const counts = new Map();
-        for (const r of rows) if (visible(r.filter, mode)) counts.set(r.taskId, (counts.get(r.taskId) || 0) + 1);
-        return counts;
-      };
-      const notes = count(store.noteFiltersForClient(clientId), settings.noteVisibility);
-      const photos = count(store.photoFiltersForClient(clientId), settings.fileVisibility);
       return store.jobsForClient(clientId)
         .filter((j) => statusAllowed(j.status, settings))
-        .map(({ status, ...job }) => ({ ...job, notes: notes.get(job.taskId) || 0, photos: photos.get(job.taskId) || 0 }));
+        .map(({ status, ...job }) => job);
     },
 
     jobDetail(taskId, clientIds, settings) {
@@ -51,7 +43,9 @@ export function createPortalData({ store, sync }) {
           .map(({ filter, ...n }) => n),
         photos: store.photosForJob(taskId)
           .filter((p) => visible(p.filter, settings.fileVisibility))
-          .map(({ id, name, comment, uploaded }) => ({ id, name, comment, uploaded })),
+          // AroFlo gives upload times in UTC (unlike job and note times, which are local),
+          // so mark them as UTC and let the browser show local time.
+          .map(({ id, name, comment, uploaded }) => ({ id, name, comment, uploaded: uploaded?.includes('T') ? `${uploaded}Z` : uploaded })),
       };
     },
 

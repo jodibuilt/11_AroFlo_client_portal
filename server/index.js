@@ -59,13 +59,34 @@ const aroflo = demoMode
       orgEncoded: env.AROFLO_ORG_ENCODED,
       hostIp: env.AROFLO_HOST_IP,
     });
-if (!demoMode && !(env.AROFLO_SECRET_KEY && env.AROFLO_UENCODED && env.AROFLO_PENCODED && env.AROFLO_ORG_ENCODED)) {
-  console.warn('AroFlo credentials are missing from .env - set them, or set DEMO_MODE=true to use sample data.');
+const HAS_AROFLO_LOGIN = demoMode || Boolean(env.AROFLO_SECRET_KEY && env.AROFLO_UENCODED && env.AROFLO_PENCODED && env.AROFLO_ORG_ENCODED);
+if (!HAS_AROFLO_LOGIN) {
+  console.warn('AroFlo credentials are not set, so syncing is off (no AroFlo API calls). The portal still serves the jobs it already has.');
 }
 
 const db = openDatabase(DATA_DIR, { journalMode: SQLITE_JOURNAL_MODE });
 const store = createStore(db, path.join(DATA_DIR, 'files'));
-const sync = createSync({ aroflo, store, intervalMinutes: Number(env.SYNC_INTERVAL_MINUTES) || 5 });
+
+// If the AroFlo login changed (e.g. .env or Azure App Settings now point at another
+// AroFlo account), the synced copy belongs to the old account: clear it so the next
+// sync downloads the new account's jobs instead of mixing the two.
+if (HAS_AROFLO_LOGIN) {
+  const accountKey = crypto.createHash('sha256')
+    .update(demoMode ? 'demo' : `${env.AROFLO_ORG_ENCODED}|${env.AROFLO_UENCODED}`).digest('hex');
+  const previous = store.getState('arofloAccount');
+  if (previous !== accountKey) {
+    if (previous || store.counts().jobs) {
+      console.log('AroFlo account changed: clearing the previous account\'s synced jobs and clients for a fresh download.');
+      store.resetSyncedData();
+    }
+    store.setState('arofloAccount', accountKey);
+  }
+}
+const sync = createSync({
+  aroflo,
+  store,
+  getIntervalMinutes: () => Number(env.SYNC_INTERVAL_MINUTES) || db.getSettings().syncIntervalMinutes,
+});
 const portal = createPortalData({ store, sync });
 setInterval(() => db.purgeSessions(), 3600_000).unref();
 
@@ -110,6 +131,7 @@ app.use((_req, res, next) => {
 app.use(sessionMiddleware(db));
 app.use('/api', requireJson);
 
+const SYNC_INTERVAL_CHOICES = [15, 30, 60, 180, 360, 720, 1440];
 const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const publicUser = (u) => u && { id: u.id, name: u.name, email: u.email, role: u.role };
 
@@ -193,10 +215,23 @@ app.get('/api/me', requireUser, (req, res) => {
   });
 });
 
+// Client users get every job for all of their linked companies in one list (newest
+// first, labelled by company when there's more than one); they never pick a company.
+// Admins pass ?clientId= to preview one client.
 app.get('/api/jobs', requireUser, (req, res) => {
+  const settings = db.getSettings();
+  if (req.user.role !== 'admin') {
+    const mine = db.clientsForUser(req.user.id);
+    if (!mine.length) return res.status(404).json({ error: 'No client account is linked to your login yet.' });
+    const jobs = mine
+      .flatMap((c) => portal.jobsForClient(c.clientId, settings)
+        .map((j) => (mine.length > 1 ? { ...j, clientName: c.clientName } : j)))
+      .sort((a, b) => String(b.completed || '').localeCompare(String(a.completed || '')));
+    return res.json({ clients: mine, jobs });
+  }
   const client = resolveClient(req, req.query.clientId);
-  if (!client) return res.status(404).json({ error: 'No client account is linked to your login yet.' });
-  res.json({ client, jobs: portal.jobsForClient(client.clientId, db.getSettings()) });
+  if (!client) return res.status(404).json({ error: 'Choose a client to preview.' });
+  res.json({ clients: [client], jobs: portal.jobsForClient(client.clientId, settings) });
 });
 
 app.get('/api/jobs/:taskId', requireUser, (req, res) => {
@@ -230,6 +265,7 @@ admin.get('/status', (req, res) => {
     stats: aroflo.stats,
     sync: { ...sync.status, ...store.counts(), fullSyncAt: store.getState('fullSyncAt') },
     webhookUrl: `${req.protocol}://${req.get('host')}/webhooks/aroflo/${WEBHOOK_SECRET}`,
+    syncIntervalMinutes: Number(env.SYNC_INTERVAL_MINUTES) || db.getSettings().syncIntervalMinutes,
   });
 });
 
@@ -310,6 +346,7 @@ admin.put('/settings', (req, res) => {
     noteVisibility: s.noteVisibility === 'all' ? 'all' : 'client',
     fileVisibility: s.fileVisibility === 'all' ? 'all' : 'client',
     includeArchived: s.includeArchived !== false,
+    syncIntervalMinutes: SYNC_INTERVAL_CHOICES.includes(Number(s.syncIntervalMinutes)) ? Number(s.syncIntervalMinutes) : DEFAULT_SETTINGS.syncIntervalMinutes,
     portalName: String(s.portalName || DEFAULT_SETTINGS.portalName).trim().slice(0, 60) || DEFAULT_SETTINGS.portalName,
   };
   db.saveSettings(next);
@@ -367,6 +404,10 @@ function findTaskIds(rawBody, query) {
   } catch {
     visit(Object.fromEntries(new URLSearchParams(text)));
   }
+  // AroFlo's Event Message payloads ({"payload":{"api_related_ids":{"taskid":"..."}}}) can
+  // contain raw line breaks inside note text, which makes them invalid JSON. Fall back to
+  // reading "taskid": "..." pairs straight from the text.
+  for (const m of text.matchAll(/"task_?id"\s*:\s*"([\w+/=-]{4,64})"/gi)) ids.add(m[1]);
   return [...ids];
 }
 
@@ -382,7 +423,7 @@ function wouldRemoveLastAdmin(id) {
 const server = app.listen(PORT, () => {
   console.log(`Client portal running at http://localhost:${PORT}  (${aroflo.mode === 'demo' ? 'DEMO data' : 'live AroFlo data'})`);
   if (!db.hasUsers()) console.log(`No users yet - open http://localhost:${PORT}/login to create the first admin account.`);
-  sync.start();
+  if (HAS_AROFLO_LOGIN) sync.start();
 });
 
 // App Service sends SIGTERM on restart/redeploy: finish in-flight requests, then close the database.

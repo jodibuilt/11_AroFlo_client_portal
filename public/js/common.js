@@ -1,5 +1,6 @@
 // Shared helpers for every page. All DOM is built with h(), which only ever sets
 // text via textContent, so data from AroFlo can't inject markup.
+import { ICONS } from './icons.js';
 
 export async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
@@ -44,51 +45,64 @@ export function mount(target, ...children) {
   append(target, children);
 }
 
-const ICONS = {
-  jobs: 'M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z',
-  cog: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.2-.6-.6-1.5 1.1-2-1.6-1.6-2 1.1-1.5-.6L13.6 4h-2.2l-.6 2.2-1.5.6-2-1.1-1.6 1.6 1.1 2-.6 1.5L4 11v2l2.2.6.6 1.5-1.1 2 1.6 1.6 2-1.1 1.5.6.6 2.2h2.2l.6-2.2 1.5-.6 2 1.1 1.6-1.6-1.1-2 .6-1.5L21 13z',
-  refresh: 'M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.2L13 11h7V4z',
-  plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
-  download: 'M11 4h2v8l3-3 1.4 1.4L12 15.8l-5.4-5.4L8 9l3 3zM5 18h14v2H5z',
-  back: 'M15.4 6.6 14 5.2 7.2 12l6.8 6.8 1.4-1.4L10 12z',
-  close: 'M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z',
-  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-4 0-7 2-7 4.5V20h14v-1.5C19 16 16 14 12 14z',
-  eye: 'M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z',
-  pulse: 'M3 13h4l2-6 4 12 2-6h6v-2h-4.6L15 4.6 11 16.6 9 10.4 7.6 11H3z',
+// Short names used around the app, mapped to Lucide icon names.
+const ALIASES = {
+  jobs: 'briefcase', user: 'users', cog: 'settings', pulse: 'activity', refresh: 'refresh-cw',
+  close: 'x', back: 'chevron-left', note: 'message-square-text', photo: 'image', site: 'map-pin',
+  alert: 'circle-alert', signout: 'log-out', print: 'printer',
 };
 
+// ICONS holds static, trusted SVG markup bundled with the app (never data).
 export function icon(name, cls = 'icon') {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('class', cls);
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', ICONS[name] || '');
-  path.setAttribute('fill', 'currentColor');
-  svg.append(path);
+  svg.innerHTML = ICONS[ALIASES[name] || name] || '';
   return svg;
 }
 
-export function renderTopbar({ user, portalName, mode, active }) {
-  const initials = portalName.split(/\s+/).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
-  const nav = [h('a', { href: '/', class: active === 'jobs' ? 'active' : '' }, icon('jobs'), h('span', {}, 'Completed Jobs'))];
-  if (user.role === 'admin') {
-    nav.push(h('a', { href: '/admin', class: active === 'admin' ? 'active' : '' }, icon('cog'), h('span', {}, 'Control Panel')));
-  }
+// `org` is the company the user is working in, shown in the header like AroFlo's
+// business name: a plain name, or an element (a company switcher) when there's a choice.
+export function renderTopbar({ user, mode, active, org }) {
+  // Clients only have the jobs page, so they get no nav at all. Admins switch between
+  // previewing the client view and the Control Panel.
+  const nav = user.role === 'admin' ? [
+    h('a', { href: '/', 'aria-current': active === 'jobs' ? 'page' : null }, icon('eye'), h('span', { class: 'label' }, 'Client view')),
+    h('a', { href: '/admin', 'aria-current': active === 'admin' ? 'page' : null }, icon('cog'), h('span', { class: 'label' }, 'Control Panel')),
+  ] : [];
   const bar = h('header', { class: 'topbar' },
-    h('a', { class: 'brand', href: '/' }, h('span', { class: 'brand-mark' }, initials || 'CP'), h('span', { class: 'brand-name' }, portalName)),
-    h('nav', { class: 'topnav' }, nav),
+    h('a', { class: 'brand', href: '/', 'aria-label': 'TTS Built Client Portal, home' },
+      h('img', { src: '/img/tts-logo.svg', alt: 'TTS Built', width: '97', height: '22' })),
+    h('div', { class: 'org' },
+      h('span', { class: 'org-caption' }, 'Client Portal'),
+      typeof org === 'string' || org == null ? h('span', { class: 'org-name' }, org || 'TTS Built') : org),
+    h('nav', { class: 'topnav', 'aria-label': 'Main' }, nav),
     h('div', { class: 'usermenu' },
-      h('div', { class: 'who' }, user.name, h('small', {}, user.role === 'admin' ? 'Administrator' : user.email)),
-      h('button', { type: 'button', onclick: logout }, 'Sign out'),
+      h('div', { class: 'who' }, h('b', {}, user.name), h('span', {}, user.role === 'admin' ? 'TTS Built administrator' : user.email)),
+      h('button', { class: 'btn-shell', type: 'button', onclick: logout }, icon('signout', 'icon'), h('span', { class: 'label' }, 'Sign out')),
     ),
   );
   const parts = [bar];
   if (mode === 'demo') {
-    parts.push(h('div', { class: 'demo-banner' }, 'Demo mode: showing sample data, not live AroFlo jobs. Set DEMO_MODE=false in .env once the AroFlo API key is working.'));
+    parts.push(h('div', { class: 'notice demo', role: 'status' }, icon('alert'),
+      'Demo mode: showing sample data, not live AroFlo jobs.'));
   }
-  document.title = `${active === 'admin' ? 'Control Panel' : 'Completed Jobs'} · ${portalName}`;
   return parts;
+}
+
+// Slim full-width title strip under the shell: optional breadcrumb link, the page title,
+// and actions on the right.
+export function pageBar({ title, crumb, actions }) {
+  return h('div', { class: 'pagebar' }, h('div', { class: 'pagebar-inner' },
+    h('div', { class: 'titles' },
+      crumb ? h('div', { class: 'crumbs' }, h('a', { href: crumb.href }, crumb.label), icon('chevron-right'), crumb.current || null) : null,
+      h('h1', {}, title)),
+    actions ? h('div', { class: 'actions' }, actions) : null));
 }
 
 async function logout() {
@@ -97,30 +111,64 @@ async function logout() {
 }
 
 // Dates arrive as zone-less "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm:ss" in AroFlo's local time.
+// A trailing "Z" marks a UTC time (photo uploads); those are shown in the viewer's time zone.
 function parts(value) {
+  if (/T\d{2}:\d{2}(:\d{2})?Z$/.test(String(value || ''))) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) {
+      return { y: d.getFullYear(), mo: d.getMonth() + 1, d: d.getDate(), hh: d.getHours(), mm: d.getMinutes() };
+    }
+  }
   const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
   return m && { y: +m[1], mo: +m[2], d: +m[3], hh: m[4] != null ? +m[4] : null, mm: m[5] != null ? +m[5] : null };
 }
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export function fmtDate(value) {
   const p = parts(value);
-  return p ? `${String(p.d).padStart(2, '0')} ${MONTHS[p.mo - 1]} ${p.y}` : '—';
+  return p ? `${p.d} ${MONTHS[p.mo - 1]} ${p.y}` : '—';
+}
+
+export function fmtDayMonth(value) {
+  const p = parts(value);
+  return p ? `${p.d} ${MONTHS[p.mo - 1]}` : '—';
+}
+
+export function fmtMonth(value) {
+  const p = parts(value);
+  return p ? `${MONTHS_LONG[p.mo - 1]} ${p.y}` : 'No completion date';
+}
+
+export function fmtTime(value) {
+  const p = parts(value);
+  if (!p || p.hh == null || (p.hh === 0 && p.mm === 0)) return '';
+  return `${p.hh % 12 || 12}:${String(p.mm).padStart(2, '0')} ${p.hh >= 12 ? 'pm' : 'am'}`;
 }
 
 export function fmtDateTime(value) {
-  const p = parts(value);
-  if (!p) return '—';
-  if (p.hh == null || (p.hh === 0 && p.mm === 0)) return fmtDate(value);
-  const ampm = p.hh >= 12 ? 'pm' : 'am';
-  const hour = p.hh % 12 || 12;
-  return `${fmtDate(value)} ${hour}:${String(p.mm).padStart(2, '0')}${ampm}`;
+  const time = fmtTime(value);
+  return time ? `${fmtDate(value)}, ${time}` : fmtDate(value);
 }
 
-export function loading(text = 'Loading…') {
-  return h('div', { class: 'loading' }, h('span', { class: 'spinner' }), text);
+export const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// Skeleton rows in place of content while it loads.
+export function loading(rows = 3) {
+  return h('div', { class: 'panel-body', 'aria-busy': 'true', 'aria-label': 'Loading' },
+    Array.from({ length: rows }, (_, i) => h('div', { class: 'skeleton-row' },
+      h('span', { class: `skeleton ${['w60', 'w40', 'w80'][i % 3]}` }),
+      h('span', { class: 'skeleton w20' }))));
 }
 
 export function errorBox(message) {
-  return h('div', { class: 'error-box', role: 'alert' }, message);
+  return h('div', { class: 'alert error', role: 'alert' }, icon('alert'), h('span', {}, message));
+}
+
+export function okBox(message) {
+  return h('div', { class: 'alert ok', role: 'status' }, icon('check'), h('span', {}, message));
+}
+
+export function emptyState(iconName, title, text) {
+  return h('div', { class: 'empty' }, icon(iconName), h('b', {}, title), text ? h('p', {}, text) : null);
 }

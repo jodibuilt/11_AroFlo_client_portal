@@ -1,24 +1,36 @@
-// Client view: completed jobs (newest first) and, for each job, only its notes and photos.
-import { api, h, mount, icon, renderTopbar, fmtDate, fmtDateTime, loading, errorBox } from './common.js';
+// Client view: completed jobs (newest first, grouped by month) and the job record:
+// notes beside photos on one page, printable as a completion record.
+import {
+  api, h, mount, icon, renderTopbar, pageBar, fmtDate, fmtDateTime,
+  loading, errorBox, emptyState,
+} from './common.js';
 
 const PAGE_SIZE = 50;
+const PERIODS = [
+  ['all', 'Any time'],
+  ['30', 'Last 30 days'],
+  ['90', 'Last 3 months'],
+  ['365', 'Last 12 months'],
+  ['custom', 'Custom range'],
+];
+
 const root = document.getElementById('root');
 const view = h('div');
-let jobsPanelEl = null;   // the jobs grid panel, re-rendered on filter/page
-let currentJob = null;    // last opened job, reused when switching tabs
+let tableHost = null;     // re-rendered on search/filter/page without rebuilding the toolbar
+let currentJob = null;    // last opened job, reused when returning to it
 
 const state = {
-  clients: [],          // clients this user can pick from
+  clients: [],            // clients this user can pick from
   clientId: null,
   jobs: null,
   error: null,
-  filters: { q: '', from: '', to: '' },
+  filters: { q: '', period: 'all', from: '', to: '' },
   page: 1,
+  sort: { key: 'completed', dir: 'desc' },
 };
 
 const me = await api('/api/me');
 const isAdmin = me.user.role === 'admin';
-mount(root, renderTopbar({ user: me.user, portalName: me.portalName, mode: me.mode, active: 'jobs' }), view);
 
 if (isAdmin) {
   try {
@@ -34,32 +46,39 @@ state.clientId = state.clients.some((c) => c.clientId === params.get('client'))
   ? params.get('client')
   : isAdmin ? null : state.clients[0]?.clientId || null;
 
+const orgName = () => state.clients.find((c) => c.clientId === state.clientId)?.clientName || '';
+// Company in the header, like AroFlo. Clients only ever see their company name(s) as
+// text; the switcher is an admin tool for previewing a client.
+const names = state.clients.map((c) => c.clientName).sort((a, b) => a.length - b.length);
+const orgLabel = names.length > 1 ? `${names[0]} + ${names.length - 1} more` : names[0];
+const orgControl = isAdmin
+  ? companySwitcher()
+  : orgLabel ? h('span', { class: 'org-name', title: names.join(', ') }, orgLabel) : null;
+mount(root, renderTopbar({ user: me.user, mode: me.mode, active: 'jobs', org: orgControl }), view);
+
 window.addEventListener('hashchange', route);
 route();
 
 // ---------- Routing ----------
 function route() {
-  const m = location.hash.match(/^#\/job\/([^/]+)(?:\/(\w+))?/);
-  if (m) return showJob(decodeURIComponent(m[1]), m[2] || 'notes');
+  const m = location.hash.match(/^#\/job\/([^/]+)/);
+  if (m) return showJob(decodeURIComponent(m[1]));
+  document.title = 'Completed jobs · TTS Built Client Portal';
   showList();
 }
 
-// ---------- Job list ----------
+// ---------- Jobs list ----------
 async function showList() {
   renderList();
-  if (!state.clientId) return;
-  if (state.jobs) return;
-  state.jobs = null;
+  if (!state.clientId || state.jobs) return;
   state.error = null;
-  renderList();
   try {
-    const data = await api(`/api/jobs?clientId=${encodeURIComponent(state.clientId)}`);
-    state.jobs = data.jobs;
+    state.jobs = (await api(isAdmin ? `/api/jobs?clientId=${encodeURIComponent(state.clientId)}` : '/api/jobs')).jobs;
   } catch (err) {
     state.error = err.message;
     state.jobs = [];
   }
-  if (!location.hash) renderList();
+  if (!location.hash.startsWith('#/job/')) renderList();
 }
 
 function setClient(clientId) {
@@ -75,227 +94,293 @@ function setClient(clientId) {
 }
 
 function renderList() {
-  const client = state.clients.find((c) => c.clientId === state.clientId);
-  const head = h('div', { class: 'pagehead' },
-    h('h1', {}, 'Completed Jobs'),
-    clientPicker(),
-  );
+  const jobs = state.jobs;
 
-  const banner = isAdmin && client
-    ? h('div', { class: 'preview-banner' }, icon('eye'), `Admin preview: this is exactly what users linked to "${client.clientName}" see.`)
-    : null;
-
-  const body = h('main');
-  if (state.error && !state.jobs?.length) body.append(errorBox(state.error));
-
-  if (!state.clientId) {
-    body.append(h('div', { class: 'panel' }, h('div', { class: 'empty' },
-      isAdmin
-        ? 'Choose an AroFlo client above to preview the jobs, notes and photos they see.'
-        : 'Your login has not been linked to a client account yet. Please contact us to get access.')));
-  } else if (!state.jobs) {
-    body.append(h('div', { class: 'panel' }, loading('Loading jobs…')));
+  let body;
+  if (state.error && !jobs?.length) {
+    body = errorBox(state.error);
+  } else if (!state.clientId) {
+    body = h('div', { class: 'panel' }, isAdmin
+      ? emptyState('eye', 'Preview a client', 'Choose a client in the header to see exactly what their users see.')
+      : emptyState('briefcase', 'Your login isn’t linked to an account yet', 'Please contact TTS Built and we’ll connect your login to your organisation’s jobs.'));
+  } else if (!jobs) {
+    body = h('div', { class: 'panel' }, loading(6));
   } else {
-    body.append(filterPanel(), jobsPanel());
+    tableHost = h('section', { class: 'panel', 'aria-labelledby': 'jobs-title' });
+    body = [searchPanel(), tableHost];
+    fillTable();
   }
-  mount(view, head, banner, body);
+
+  const notice = isAdmin && state.clientId
+    ? h('div', { class: 'notice preview', role: 'status' }, icon('eye'), `Previewing as ${orgName()}: this is exactly what their users see.`)
+    : null;
+  mount(view, notice, h('main', { class: 'page' }, body));
 }
 
-function clientPicker() {
-  if (!isAdmin && state.clients.length <= 1) {
-    const only = state.clients[0];
-    return only ? h('span', { class: 'crumbs' }, only.clientName) : null;
-  }
-  const select = h('select', { 'aria-label': 'Client', onchange: (e) => setClient(e.target.value) },
-    isAdmin ? h('option', { value: '' }, '— Select a client to preview —') : null,
-    state.clients.map((c) => h('option', { value: c.clientId, selected: c.clientId === state.clientId }, c.clientName)),
-  );
-  return h('label', { class: 'field' }, select);
+function companySwitcher() {
+  return h('select', { 'aria-label': 'Preview client', onchange: (e) => setClient(e.target.value) },
+    h('option', { value: '' }, 'Preview a client…'),
+    state.clients.map((c) => h('option', { value: c.clientId, selected: c.clientId === state.clientId }, c.clientName)));
 }
 
-function filterPanel() {
+function searchPanel() {
   const f = state.filters;
-  const update = (key) => (e) => {
-    f[key] = e.target.value;
+  const range = h('div', { class: 'range', hidden: f.period !== 'custom' },
+    h('label', { class: 'field' }, h('span', {}, 'From'), h('input', { type: 'date', value: f.from, onchange: (e) => update('from', e.target.value) })),
+    h('label', { class: 'field' }, h('span', {}, 'To'), h('input', { type: 'date', value: f.to, onchange: (e) => update('to', e.target.value) })));
+  function update(key, value) {
+    f[key] = value;
     state.page = 1;
-    if (jobsPanelEl) fillJobsPanel();
-  };
-  return h('div', { class: 'panel' },
-    h('div', { class: 'panel-head' }, 'Search'),
-    h('div', { class: 'panel-body filters' },
+    range.hidden = f.period !== 'custom';
+    fillTable();
+  }
+  return h('section', { class: 'panel search-panel', role: 'search', 'aria-labelledby': 'search-title' },
+    h('div', { class: 'panel-head' }, h('h2', { id: 'search-title' }, 'Search')),
+    h('div', { class: 'toolbar' },
       h('label', { class: 'field search' }, h('span', {}, 'Keyword'),
-        h('input', { type: 'search', value: f.q, placeholder: 'Job #, task or location…', oninput: update('q') })),
-      h('label', { class: 'field' }, h('span', {}, 'Completed from'), h('input', { type: 'date', value: f.from, onchange: update('from') })),
-      h('label', { class: 'field' }, h('span', {}, 'Completed to'), h('input', { type: 'date', value: f.to, onchange: update('to') })),
-      h('button', {
-        class: 'btn', type: 'button',
-        onclick: () => { state.filters = { q: '', from: '', to: '' }; state.page = 1; renderList(); },
-      }, 'Clear'),
+        h('div', { class: 'input-icon' }, icon('search'),
+          h('input', { type: 'search', value: f.q, placeholder: 'Job number, task or location', oninput: (e) => update('q', e.target.value) }))),
+      h('label', { class: 'field period' }, h('span', {}, 'Completed'),
+        h('select', { onchange: (e) => update('period', e.target.value) },
+          PERIODS.map(([value, label]) => h('option', { value, selected: value === f.period }, label)))),
+      range,
+      h('button', { class: 'btn', type: 'button', onclick: clearFilters }, 'Clear'),
     ),
   );
 }
 
-// Jobs arrive from the server already sorted newest-completed first.
 function filteredJobs() {
-  const { q, from, to } = state.filters;
+  const { q, period, from, to } = state.filters;
   const needle = q.trim().toLowerCase();
+  let min = '';
+  let max = '';
+  if (period === 'custom') {
+    min = from;
+    max = to;
+  } else if (period !== 'all') {
+    const d = new Date(Date.now() - Number(period) * 86400000);
+    min = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
   return state.jobs.filter((j) => {
     const done = (j.completed || '').slice(0, 10);
-    if (from && (!done || done < from)) return false;
-    if (to && (!done || done > to)) return false;
+    if (min && (!done || done < min)) return false;
+    if (max && (!done || done > max)) return false;
     if (!needle) return true;
-    return [j.jobNumber, j.taskName, j.location].some((v) => String(v || '').toLowerCase().includes(needle));
+    return [j.jobNumber, j.taskName, j.location, j.clientName].some((v) => String(v || '').toLowerCase().includes(needle));
   });
 }
 
-function jobsPanel() {
-  jobsPanelEl = h('div', { class: 'panel' });
-  fillJobsPanel();
-  return jobsPanelEl;
+function clearFilters() {
+  state.filters = { q: '', period: 'all', from: '', to: '' };
+  state.page = 1;
+  renderList();
 }
 
-function fillJobsPanel() {
-  const rows = filteredJobs();
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+// Grid columns: [key, heading, class]. All are sortable.
+function columns() {
+  const multi = state.jobs.some((j) => j.clientName);
+  return [
+    ['completed', 'Completed', 'col-date'],
+    ['jobNumber', 'Job #', 'col-job'],
+    ['taskName', 'Task', 'col-task'],
+    ['location', 'Location', 'col-site'],
+    multi ? ['clientName', 'Company', 'col-company'] : null,
+  ].filter(Boolean);
+}
+
+function sortedJobs(rows) {
+  const { key, dir } = state.sort;
+  const mult = dir === 'asc' ? 1 : -1;
+  const numeric = key === 'jobNumber';
+  return [...rows].sort((a, b) => {
+    const cmp = numeric
+      ? (Number(a[key]) || 0) - (Number(b[key]) || 0)
+      : String(a[key] || '').localeCompare(String(b[key] || ''), undefined, { numeric: true, sensitivity: 'base' });
+    return cmp * mult || String(b.completed || '').localeCompare(String(a.completed || ''));
+  });
+}
+
+function sortBy(key) {
+  state.sort = state.sort.key === key
+    ? { key, dir: state.sort.dir === 'asc' ? 'desc' : 'asc' }
+    : { key, dir: ['completed', 'jobNumber'].includes(key) ? 'desc' : 'asc' };
+  state.page = 1;
+  fillTable();
+}
+
+function fillTable() {
+  const rows = sortedJobs(filteredJobs());
+  const total = state.jobs.length;
+  const filtered = rows.length !== total;
+  const head = h('div', { class: 'panel-head' },
+    h('h2', { id: 'jobs-title' }, 'Jobs', h('span', { class: 'count' }, filtered ? `${rows.length} of ${total}` : total)));
+
+  if (!rows.length) {
+    return mount(tableHost, head, total
+      ? h('div', { class: 'empty' }, h('b', {}, 'No jobs match your search'),
+        h('p', {}, h('button', { class: 'btn small', type: 'button', onclick: clearFilters }, 'Clear search')))
+      : emptyState('briefcase', 'No completed jobs yet', 'Jobs appear here as soon as TTS Built completes them.'));
+  }
+  const pages = Math.ceil(rows.length / PAGE_SIZE);
   state.page = Math.min(state.page, pages);
-  const pageRows = rows.slice((state.page - 1) * PAGE_SIZE, state.page * PAGE_SIZE);
+  const first = (state.page - 1) * PAGE_SIZE;
+  const pageRows = rows.slice(first, first + PAGE_SIZE);
+  const cols = columns();
 
-  const table = h('table', { class: 'grid cards' },
-    h('thead', {}, h('tr', {},
-      h('th', { scope: 'col' }, 'Completed', h('span', { class: 'arrow' }, '▼')),
-      h('th', { scope: 'col' }, 'Job #'),
-      h('th', { scope: 'col' }, 'Task'),
-      h('th', { scope: 'col' }, 'Location'))),
-    h('tbody', {}, pageRows.map((j) => {
-      const href = `#/job/${encodeURIComponent(j.taskId)}`;
-      return h('tr', { class: 'clickable', onclick: () => { location.hash = href; } },
-        h('td', { class: 'nowrap', 'data-label': 'Completed' }, fmtDate(j.completed)),
-        h('td', { class: 'jobno' }, h('a', { href, onclick: (e) => e.stopPropagation() }, j.jobNumber || '—')),
-        h('td', {}, j.taskName),
-        h('td', { 'data-label': 'Location' }, j.location || '—'),
-      );
-    })),
-  );
-
-  mount(jobsPanelEl,
-    h('div', { class: 'panel-head' }, 'Jobs', h('span', { class: 'count' }, `(${rows.length}${rows.length !== state.jobs.length ? ` of ${state.jobs.length}` : ''})`)),
-    rows.length
-      ? h('div', { class: 'grid-wrap' }, table)
-      : h('div', { class: 'empty' }, state.jobs.length ? 'No jobs match your search.' : 'No completed jobs yet.'),
+  mount(tableHost, head,
+    h('div', { class: 'table-wrap' }, h('table', { class: 'data grid stack' },
+      h('caption', { class: 'visually-hidden' }, 'Completed jobs. Select a column heading to sort.'),
+      h('thead', {}, h('tr', {}, cols.map(([key, label, cls]) => {
+        const active = state.sort.key === key;
+        return h('th', { scope: 'col', class: cls, 'aria-sort': active ? (state.sort.dir === 'asc' ? 'ascending' : 'descending') : null },
+          h('button', { class: `sort${active ? ' active' : ''}`, type: 'button', onclick: () => sortBy(key) },
+            label, active ? icon(state.sort.dir === 'asc' ? 'chevron-up' : 'chevron-down', 'icon sort-mark') : null));
+      }))),
+      h('tbody', {}, pageRows.map((j) => jobRow(j, cols))))),
     pages > 1 ? h('div', { class: 'pager' },
-      `Showing ${(state.page - 1) * PAGE_SIZE + 1}–${Math.min(state.page * PAGE_SIZE, rows.length)} of ${rows.length}`,
+      h('span', { class: 'num', role: 'status' }, `${first + 1}–${first + pageRows.length} of ${rows.length}`),
       h('span', { class: 'spacer' }),
-      h('button', { class: 'btn small', type: 'button', disabled: state.page === 1, onclick: () => { state.page--; fillJobsPanel(); } }, 'Previous'),
-      `Page ${state.page} of ${pages}`,
-      h('button', { class: 'btn small', type: 'button', disabled: state.page === pages, onclick: () => { state.page++; fillJobsPanel(); } }, 'Next'),
-    ) : null,
+      h('button', { class: 'btn small', type: 'button', disabled: state.page === 1, onclick: () => { state.page--; fillTable(); } }, icon('chevron-left'), 'Previous'),
+      h('button', { class: 'btn small', type: 'button', disabled: state.page === pages, onclick: () => { state.page++; fillTable(); } }, 'Next', icon('chevron-right'))) : null,
   );
 }
 
-// ---------- Job: notes & photos ----------
-async function showJob(taskId, tab) {
-  if (currentJob?.taskId === taskId) return renderJob(currentJob, tab);
-  mount(view,
-    h('div', { class: 'pagehead' }, h('div', { class: 'crumbs' }, h('a', { href: '#' }, 'Completed Jobs'), ' › Loading…')),
-    h('main', {}, h('div', { class: 'panel' }, loading('Loading job…'))),
-  );
+function jobRow(j, cols) {
+  const href = `#/job/${encodeURIComponent(j.taskId)}`;
+  const cell = {
+    completed: () => fmtDate(j.completed),
+    jobNumber: () => h('a', { class: 'job-link', href }, j.jobNumber || 'Job'),
+    taskName: () => h('span', { class: 'cell-text', title: j.taskName }, j.taskName || `Job ${j.jobNumber}`),
+    location: () => h('span', { class: 'cell-text', title: j.location }, j.location || ''),
+    clientName: () => h('span', { class: 'cell-text', title: j.clientName }, j.clientName || ''),
+  };
+  return h('tr', { class: 'row', onclick: (e) => { if (!e.target.closest('a')) location.hash = href; } },
+    cols.map(([key, , cls]) => h('td', { class: `${cls} num` }, cell[key]())));
+}
+
+// ---------- Job record ----------
+async function showJob(taskId) {
+  if (currentJob?.taskId === taskId) return renderJob(currentJob);
+  const bar = pageBar({ title: 'Loading job…', crumb: { href: '#', label: 'Completed Jobs' } });
+  mount(view, bar, h('main', { class: 'page' }, h('div', { class: 'panel' }, loading(4))));
   try {
     const { job } = await api(`/api/jobs/${encodeURIComponent(taskId)}`);
     currentJob = job;
-    if (location.hash.startsWith(`#/job/${encodeURIComponent(taskId)}`)) renderJob(job, tab);
+    if (location.hash.startsWith(`#/job/${encodeURIComponent(taskId)}`)) renderJob(job);
   } catch (err) {
-    mount(view,
-      h('div', { class: 'pagehead' }, h('div', { class: 'crumbs' }, h('a', { href: '#' }, 'Completed Jobs'))),
-      h('main', {}, errorBox(err.message)),
-    );
+    mount(view, pageBar({ title: 'Job not available', crumb: { href: '#', label: 'Completed Jobs' } }),
+      h('main', { class: 'page' }, errorBox(err.message)));
   }
 }
 
-function renderJob(job, tab) {
-  const base = `#/job/${encodeURIComponent(job.taskId)}`;
-  const tabs = [['notes', 'Notes', job.notes.length], ['photos', 'Photos', job.photos.length]];
-  if (!tabs.some(([id]) => id === tab)) tab = 'notes';
-
+function renderJob(job) {
+  document.title = `Job ${job.jobNumber} · TTS Built Client Portal`;
+  const printed = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const showCompany = !isAdmin && state.clients.length > 1 && job.clientName;
+  const detail = (label, value) => (value ? h('div', {}, h('dt', {}, label), h('dd', {}, value)) : null);
   mount(view,
-    h('div', { class: 'pagehead' },
-      h('a', { class: 'btn small', href: '#' }, icon('back'), 'Back'),
-      h('div', { class: 'crumbs' }, h('a', { href: '#' }, 'Completed Jobs'), ` › Job ${job.jobNumber}`),
-    ),
-    h('main', {},
-      h('div', { class: 'panel' },
-        h('div', { class: 'taskhead' },
-          h('div', {},
-            h('h2', {}, job.taskName || `Job ${job.jobNumber}`),
-            h('div', { class: 'ids' },
-              h('span', {}, 'Job # ', h('b', {}, job.jobNumber)),
-              job.location ? h('span', {}, job.location) : null,
-              h('span', {}, `Completed ${fmtDate(job.completed)}`),
-            ),
-          ),
-        ),
-        h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([id, label, count]) =>
-          h('button', {
-            type: 'button', role: 'tab', 'aria-selected': String(id === tab),
-            onclick: () => { location.hash = `${base}/${id}`; },
-          }, label, h('span', { class: 'badge' }, count)))),
-        h('div', { class: 'tabpanel', role: 'tabpanel' }, tab === 'photos' ? photosTab(job) : notesTab(job)),
-      ),
-    ),
-  );
+    pageBar({
+      title: job.taskName || `Job ${job.jobNumber}`,
+      crumb: { href: '#', label: 'Completed Jobs', current: `Job ${job.jobNumber}` },
+      actions: h('button', { class: 'btn primary', type: 'button', onclick: (e) => printRecord(e.currentTarget) }, icon('print'), 'Print / Save PDF'),
+    }),
+    h('main', { class: 'page' },
+      h('div', { class: 'print-head' },
+        h('img', { src: '/img/tts-logo-dark.svg', alt: 'TTS Built' }),
+        h('span', {}, 'Job completion record', job.clientName ? [h('br'), job.clientName] : null, h('br'), `Printed ${printed}`)),
+      h('section', { class: 'panel', 'aria-labelledby': 'details-title' },
+        h('div', { class: 'panel-head' }, h('h2', { id: 'details-title' }, 'Job details')),
+        // Company is already in the header; list it here only for users linked to several.
+        h('dl', { class: `detail-grid${showCompany ? ' five' : ''}` },
+          detail('Job #', h('span', { class: 'num' }, job.jobNumber)),
+          detail('Task', job.taskName),
+          detail('Location', job.location),
+          detail('Completed', h('span', { class: 'num' }, fmtDateTime(job.completed))),
+          showCompany ? detail('Company', job.clientName) : null)),
+      recordBody(job),
+    ));
 }
 
-function notesTab(job) {
-  if (!job.notes.length) return h('div', { class: 'empty' }, 'No notes for this job.');
-  return job.notes.map((n) => h('div', { class: 'note' },
-    h('div', { class: 'note-head' },
-      h('strong', {}, n.author || 'Technician'),
-      h('span', { class: 'spacer' }),
-      h('span', {}, fmtDateTime(n.posted)),
-    ),
-    h('div', { class: 'note-body' }, n.text || '(empty note)'),
-  ));
+// Photos load lazily on screen; make sure every one has loaded before printing so
+// none of them prints as a blank tile.
+async function printRecord(button) {
+  button.disabled = true;
+  const images = [...document.querySelectorAll('.photo img')];
+  for (const img of images) img.loading = 'eager';
+  await Promise.all(images.map((img) => img.decode().catch(() => {})));
+  button.disabled = false;
+  window.print();
+}
+window.addEventListener('beforeprint', () => {
+  for (const img of document.querySelectorAll('.photo img')) img.loading = 'eager';
+});
+
+// Only sections with something in them are shown; a lone section takes the full width.
+function recordBody(job) {
+  const sections = [job.notes.length ? notesPanel(job) : null, job.photos.length ? photosPanel(job) : null].filter(Boolean);
+  if (!sections.length) {
+    return h('div', { class: 'panel record-empty' }, h('p', {}, 'No notes or photos have been shared for this job yet.'));
+  }
+  return h('div', { class: `record-body${sections.length === 1 ? ' single' : ''}` }, sections);
+}
+
+function notesPanel(job) {
+  return h('section', { class: 'panel', 'aria-labelledby': 'notes-title' },
+    h('div', { class: 'panel-head' }, h('h2', { id: 'notes-title' }, 'Notes', h('span', { class: 'count' }, job.notes.length))),
+    job.notes.length
+      ? h('ul', { class: 'notes' }, job.notes.map((n) => h('li', {},
+        h('div', { class: 'note-meta' },
+          h('b', {}, n.author || 'TTS Built'),
+          h('time', { datetime: n.posted || '' }, fmtDateTime(n.posted))),
+        h('p', { class: 'note-text' }, n.text || '(empty note)'))))
+      : null);
 }
 
 const photoUrl = (job, p, download) =>
   `/api/jobs/${encodeURIComponent(job.taskId)}/files/${encodeURIComponent(p.id)}${download ? '?download=1' : ''}`;
 
-function photosTab(job) {
-  if (!job.photos.length) return h('div', { class: 'empty' }, 'No photos for this job.');
-  return h('div', { class: 'photos' }, job.photos.map((p, i) =>
-    h('button', { class: 'photo', type: 'button', onclick: () => openLightbox(job, i) },
-      h('img', { class: 'thumb', src: photoUrl(job, p), alt: p.comment || p.name, loading: 'lazy' }),
-      h('span', { class: 'cap' },
-        h('b', {}, p.comment || p.name),
-        h('span', {}, fmtDateTime(p.uploaded))),
-    )));
+function photosPanel(job) {
+  // When every photo was uploaded at the same time, say it once in the heading rather
+  // than repeating it under each photo.
+  const times = new Set(job.photos.map((p) => fmtDateTime(p.uploaded)));
+  const sharedTime = times.size === 1 ? [...times][0] : null;
+  return h('section', { class: 'panel', 'aria-labelledby': 'photos-title' },
+    h('div', { class: 'panel-head' },
+      h('h2', { id: 'photos-title' }, 'Photos', h('span', { class: 'count' }, job.photos.length)),
+      sharedTime && sharedTime !== '—' ? h('span', { class: 'hint num' }, `Uploaded ${sharedTime}`) : null),
+    h('div', { class: 'photo-grid' }, job.photos.map((p, i) => {
+      const caption = [p.comment ? h('b', {}, p.comment) : null, sharedTime ? null : h('span', {}, fmtDateTime(p.uploaded))].filter(Boolean);
+      return h('button', { class: 'photo', type: 'button', onclick: () => openViewer(job, i), 'aria-label': `Open photo ${i + 1}${p.comment ? `: ${p.comment}` : ''}` },
+        h('img', { src: photoUrl(job, p), alt: '', loading: 'lazy', decoding: 'async' }),
+        caption.length ? h('span', { class: 'cap' }, caption) : null);
+    })));
 }
 
-// ---------- Lightbox ----------
-function openLightbox(job, index) {
+// ---------- Photo viewer ----------
+function openViewer(job, index) {
   const opener = document.activeElement;
   const img = h('img', { alt: '' });
-  const caption = h('div', { class: 'lb-cap' });
-  const counter = h('span');
+  const caption = h('div', { class: 'viewer-cap' });
+  const counter = h('span', { class: 'counter', 'aria-live': 'polite' });
   const download = h('a', { class: 'btn small' }, icon('download'), 'Download');
   const closeBtn = h('button', { class: 'btn small', type: 'button', onclick: close }, icon('close'), 'Close');
+  const multi = job.photos.length > 1;
 
   const show = (i) => {
     index = (i + job.photos.length) % job.photos.length;
     const p = job.photos[index];
     img.src = photoUrl(job, p);
-    img.alt = p.comment || p.name;
+    img.alt = p.comment || `Photo ${index + 1} of job ${job.jobNumber}`;
     download.href = photoUrl(job, p, true);
-    counter.textContent = `${index + 1} / ${job.photos.length}`;
-    mount(caption, p.comment || p.name, h('span', {}, fmtDateTime(p.uploaded)));
+    counter.textContent = `Photo ${index + 1} of ${job.photos.length}`;
+    mount(caption, p.comment || `Photo ${index + 1}`, h('span', {}, fmtDateTime(p.uploaded)));
   };
-  const multi = job.photos.length > 1;
-  const box = h('div', { class: 'lightbox', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Photo viewer' },
-    h('div', { class: 'lb-top' }, counter, h('span', { class: 'spacer' }), download, closeBtn),
-    h('div', { class: 'lb-stage', onclick: (e) => { if (e.target === e.currentTarget) close(); } },
+  const box = h('div', { class: 'viewer', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Photos for job ${job.jobNumber}` },
+    h('div', { class: 'viewer-top' }, counter, h('span', { class: 'spacer' }), download, closeBtn),
+    h('div', { class: 'viewer-stage', onclick: (e) => { if (e.target === e.currentTarget) close(); } },
       img,
-      multi ? h('button', { class: 'lb-nav prev', type: 'button', 'aria-label': 'Previous photo', onclick: () => show(index - 1) }, '‹') : null,
-      multi ? h('button', { class: 'lb-nav next', type: 'button', 'aria-label': 'Next photo', onclick: () => show(index + 1) }, '›') : null,
-    ),
+      multi ? h('button', { class: 'viewer-nav prev', type: 'button', 'aria-label': 'Previous photo', onclick: () => show(index - 1) }, icon('chevron-left')) : null,
+      multi ? h('button', { class: 'viewer-nav next', type: 'button', 'aria-label': 'Next photo', onclick: () => show(index + 1) }, icon('chevron-right')) : null),
     caption,
   );
   function onKey(e) {

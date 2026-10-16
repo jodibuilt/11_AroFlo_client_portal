@@ -100,6 +100,9 @@ export function createAroFloClient(config) {
   }
 
   async function get(params) {
+    if (!secretKey || !uEncoded || !pEncoded || !orgEncoded) {
+      throw new AroFloError('AroFlo credentials are not set (AROFLO_* settings)', 'config');
+    }
     const varString = params
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join('&');

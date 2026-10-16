@@ -4,8 +4,9 @@
 
 .DESCRIPTION
   Zips server/, public/ and package files (never .env, data/ or node_modules), uploads
-  the zip, lets Azure run "npm install", then checks /healthz. Users, settings and
-  cached photos live in /home/data on Azure and are untouched by deploys.
+  the zip, lets Azure run "npm install" (SCM_DO_BUILD_DURING_DEPLOYMENT=true; Azure then
+  unpacks node_modules at startup, so keep that setting on), then checks /healthz.
+  Users, settings and synced jobs/photos live in /home/data on Azure and are untouched.
 
 .EXAMPLE
   .\deploy\azure-deploy.ps1 -AppName tts-client-portal

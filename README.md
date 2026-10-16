@@ -39,14 +39,17 @@ The portal keeps its **own copy** of completed jobs, notes and photos (SQLite + 
 only read that copy, so viewing jobs makes **no AroFlo API calls**.
 
 - **First run:** one paged download of every Completed/Archived task with notes and photos (~10 calls for ~200 jobs).
-- **Every 5 minutes:** AroFlo's `lastupdate` zone (which doesn't count toward the 2,000/day limit) lists tasks
-  changed since last time; only those are re-fetched, by id (separate 20,000/day allowance). Reopened or
-  deleted tasks are removed from the portal.
-- **Webhook:** an AroFlo Event Message (Task Completed → Webhook) pointing at the URL shown in
-  **Control Panel → AroFlo Sync** triggers that check immediately. The payload format doesn't matter; if it
-  contains a task id, that task is fetched first.
-- **Hourly:** client list. **Daily:** re-check jobs completed in the last 30 days, in case notes/photos are
-  added to an already-completed job.
+- **Webhooks (main trigger):** AroFlo Event Messages (Task Status – Completed / Archived, Task – Add Task Note →
+  Webhook) pointing at the URL in **Control Panel → AroFlo sync**. AroFlo's payload includes the task id
+  (`payload.api_related_ids.taskid`), so just that task is fetched, by id (separate 20,000/day allowance, not the
+  2,000/day limit).
+- **Change check:** on every webhook and as a backup (hourly by default; Portal settings, 15 min to once a day),
+  AroFlo's `lastupdate` zone (free under the daily limit) lists changed tasks. Only jobs the portal already holds
+  are re-fetched, so edits, reopened jobs and deletions are picked up while busy in-progress work elsewhere in
+  AroFlo costs nothing.
+- **Daily:** client list (1 call) and a re-check of jobs completed in the last 7 days (a few calls), which catches
+  any completion whose webhook was missed and photos added just after completion.
+- **Restarts** don't re-download anything; a full download happens only on first run or *Full resync*.
 - **Photos** are downloaded once, for clients linked to a portal user, and kept on disk.
   Linking a client to a user downloads its photos within a few minutes.
 - **Control Panel → AroFlo Sync** shows status, counts and API usage, with *Sync now* and *Full resync* buttons.

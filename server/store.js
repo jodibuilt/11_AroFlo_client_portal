@@ -27,10 +27,6 @@ export function createStore(db, fileDir) {
 
     deleteNotes: h.prepare('DELETE FROM job_notes WHERE task_id = ?'),
     insertNote: h.prepare('INSERT OR REPLACE INTO job_notes (task_id, note_id, text, posted, author, filter) VALUES (?, ?, ?, ?, ?, ?)'),
-    noteFiltersForClient: h.prepare(`SELECT n.task_id AS taskId, n.filter FROM job_notes n
-                                      JOIN jobs j ON j.task_id = n.task_id WHERE j.client_id = ?`),
-    photoFiltersForClient: h.prepare(`SELECT p.task_id AS taskId, p.filter FROM job_photos p
-                                       JOIN jobs j ON j.task_id = p.task_id WHERE j.client_id = ?`),
     notesForJob: h.prepare('SELECT note_id AS id, text, posted, author, filter FROM job_notes WHERE task_id = ? ORDER BY posted DESC'),
 
     photosForJob: h.prepare(`SELECT doc_id AS id, name, comment, uploaded, filter, file, content_type AS contentType
@@ -96,14 +92,21 @@ export function createStore(db, fileDir) {
     jobsForClient: (clientId) => q.jobsForClient.all(clientId),
     allJobIds: () => q.allJobIds.all().map((r) => r.taskId),
     notesForJob: (taskId) => q.notesForJob.all(taskId),
-    noteFiltersForClient: (clientId) => q.noteFiltersForClient.all(clientId),
-    photoFiltersForClient: (clientId) => q.photoFiltersForClient.all(clientId),
     photosForJob: (taskId) => q.photosForJob.all(taskId),
     getPhoto: (taskId, docId) => q.photo.get(taskId, docId) || null,
     setPhotoFile: (taskId, docId, file, contentType) => q.setPhotoFile.run(file, contentType, taskId, docId),
     tasksMissingPhotos: (limit) => q.tasksMissingPhotos.all(limit).map((r) => r.taskId),
 
     // ----- sync bookkeeping -----
+    // Forgets everything synced from AroFlo (jobs, notes, photos, clients, sync position)
+    // so the next sync downloads afresh. Users, their links and settings are kept.
+    resetSyncedData() {
+      db.transaction(() => {
+        h.exec('DELETE FROM jobs; DELETE FROM clients;');
+        h.prepare("DELETE FROM sync_state WHERE key IN ('cursor', 'clientsAt', 'recentAt', 'fullSyncAt')").run();
+      });
+      for (const f of fs.readdirSync(fileDir)) fs.rmSync(path.join(fileDir, f), { force: true });
+    },
     getState: (key) => {
       const row = q.getState.get(key);
       return row ? JSON.parse(row.value) : null;

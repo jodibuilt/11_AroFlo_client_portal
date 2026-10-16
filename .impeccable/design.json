@@ -1,0 +1,779 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-16T04:11:15.046Z",
+  "title": "Design System: TTS Built Client Portal",
+  "extensions": {
+    "colorMeta": {
+      "shell": {
+        "role": "neutral",
+        "displayName": "Charcoal Shell",
+        "canonical": "#1f1e1e",
+        "oklch": "oklch(23.6% 0.002 17.3)",
+        "cssVar": "--shell",
+        "tonalRamp": [
+          "#0c0b0b",
+          "#252424",
+          "#403f3f",
+          "#5e5d5d",
+          "#818080",
+          "#a5a4a4",
+          "#cbcaca",
+          "#efeeee"
+        ]
+      },
+      "shell-raised": {
+        "role": "neutral",
+        "displayName": "Raised Charcoal",
+        "canonical": "#2b2d2b",
+        "oklch": "oklch(29.4% 0.005 145.5)",
+        "cssVar": "--shell-2",
+        "tonalRamp": [
+          "#0a0c0a",
+          "#232523",
+          "#3e403e",
+          "#5c5e5c",
+          "#7e817e",
+          "#a3a5a3",
+          "#c9cbc9",
+          "#edefed"
+        ]
+      },
+      "shell-line": {
+        "role": "neutral",
+        "displayName": "Shell Divider",
+        "canonical": "#3a3b39",
+        "oklch": "oklch(35.1% 0.004 128.6)",
+        "cssVar": "--shell-line",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#232422",
+          "#3f403e",
+          "#5d5e5c",
+          "#7f817e",
+          "#a4a5a3",
+          "#cacbc8",
+          "#eeefec"
+        ]
+      },
+      "shell-text": {
+        "role": "neutral",
+        "displayName": "Shell Text",
+        "canonical": "#f3f4f6",
+        "oklch": "oklch(96.7% 0.003 264.5)",
+        "cssVar": "--shell-text",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#232425",
+          "#3f4041",
+          "#5d5e5f",
+          "#7f8082",
+          "#a0a1a3",
+          "#c6c7c9",
+          "#edeef0"
+        ]
+      },
+      "shell-muted": {
+        "role": "neutral",
+        "displayName": "Shell Muted",
+        "canonical": "#b6bcc3",
+        "oklch": "oklch(79.3% 0.012 252.1)",
+        "cssVar": "--shell-muted",
+        "tonalRamp": [
+          "#080c10",
+          "#20242a",
+          "#3b4046",
+          "#595e64",
+          "#7b8187",
+          "#9ca2a9",
+          "#c2c8cf",
+          "#e9eff6"
+        ]
+      },
+      "brand-orange": {
+        "role": "primary",
+        "displayName": "TTS Signal Orange",
+        "canonical": "#ff4616",
+        "oklch": "oklch(66.2% 0.227 34.2)",
+        "cssVar": "--brand",
+        "tonalRamp": [
+          "#1d0100",
+          "#470b00",
+          "#761800",
+          "#a92500",
+          "#de401a",
+          "#ff7455",
+          "#feb6a5",
+          "#fee9e4"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Deep Site Orange",
+        "canonical": "#c8380c",
+        "oklch": "oklch(55.4% 0.187 35.2)",
+        "cssVar": "--accent",
+        "tonalRamp": [
+          "#1c0200",
+          "#460b00",
+          "#751a00",
+          "#a72901",
+          "#d84822",
+          "#fe7553",
+          "#ffb6a3",
+          "#ffe9e3"
+        ]
+      },
+      "accent-hover": {
+        "role": "primary",
+        "displayName": "Deep Site Orange Pressed",
+        "canonical": "#a82f0a",
+        "oklch": "oklch(48.8% 0.163 35.4)",
+        "cssVar": "--accent-hover",
+        "tonalRamp": [
+          "#1c0200",
+          "#460c00",
+          "#741b01",
+          "#a52c05",
+          "#cf5434",
+          "#f97a59",
+          "#ffb6a3",
+          "#ffe9e3"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Orange Tint",
+        "canonical": "#fdf0ea",
+        "oklch": "oklch(96.4% 0.016 46.6)",
+        "cssVar": "--accent-soft",
+        "tonalRamp": [
+          "#110906",
+          "#2b221d",
+          "#473d39",
+          "#665b56",
+          "#897d78",
+          "#aea29c",
+          "#d4c8c2",
+          "#f8ebe5"
+        ]
+      },
+      "accent-line": {
+        "role": "primary",
+        "displayName": "Orange Tint Border",
+        "canonical": "#f3c9b8",
+        "oklch": "oklch(86.8% 0.053 43.2)",
+        "cssVar": "--accent-line",
+        "tonalRamp": [
+          "#1a0400",
+          "#391a0d",
+          "#583628",
+          "#785445",
+          "#9c7667",
+          "#c29a8a",
+          "#eac0af",
+          "#feeae1"
+        ]
+      },
+      "link": {
+        "role": "secondary",
+        "displayName": "Harbour Blue",
+        "canonical": "#2a6f94",
+        "oklch": "oklch(51.5% 0.090 235.9)",
+        "cssVar": "--link",
+        "tonalRamp": [
+          "#000d17",
+          "#00283b",
+          "#034563",
+          "#1e6589",
+          "#4588af",
+          "#6aaed5",
+          "#90d4fd",
+          "#def2ff"
+        ]
+      },
+      "link-hover": {
+        "role": "secondary",
+        "displayName": "Harbour Blue Pressed",
+        "canonical": "#1f5675",
+        "oklch": "oklch(43.2% 0.077 237.2)",
+        "cssVar": "--link-hover",
+        "tonalRamp": [
+          "#000d17",
+          "#00273c",
+          "#084563",
+          "#2e6483",
+          "#5187a8",
+          "#76accf",
+          "#9bd3f7",
+          "#dff2ff"
+        ]
+      },
+      "link-soft": {
+        "role": "secondary",
+        "displayName": "Blue Tint",
+        "canonical": "#eaf3f8",
+        "oklch": "oklch(95.9% 0.012 231.7)",
+        "cssVar": "--link-soft",
+        "tonalRamp": [
+          "#070c0f",
+          "#1e2529",
+          "#3a4145",
+          "#575f63",
+          "#7a8286",
+          "#9ea6ab",
+          "#c3ccd1",
+          "#e7f0f5"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Cool Ground",
+        "canonical": "#f2f3f5",
+        "oklch": "oklch(96.4% 0.003 264.5)",
+        "cssVar": "--ground",
+        "tonalRamp": [
+          "#0a0b0c",
+          "#232425",
+          "#3f4041",
+          "#5d5e5f",
+          "#7f8082",
+          "#a0a1a3",
+          "#c6c7c9",
+          "#edeef0"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel White",
+        "canonical": "#ffffff",
+        "oklch": "oklch(100.0% 0.000 89.9)",
+        "cssVar": "--panel",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#808080",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "panel-2": {
+        "role": "neutral",
+        "displayName": "Panel Tint",
+        "canonical": "#f7f8fa",
+        "oklch": "oklch(97.9% 0.003 264.5)",
+        "cssVar": "--panel-2",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#232425",
+          "#3f4041",
+          "#5d5e5f",
+          "#7f8082",
+          "#a0a1a3",
+          "#c6c7c9",
+          "#edeef0"
+        ]
+      },
+      "grid-head": {
+        "role": "neutral",
+        "displayName": "Grid Head",
+        "canonical": "#eef0f3",
+        "oklch": "oklch(95.4% 0.005 258.3)",
+        "note": "Literal in app.css (jobs grid header, secondary button pressed); no custom property.",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#232426",
+          "#3e4042",
+          "#5c5e60",
+          "#7e8083",
+          "#a0a2a4",
+          "#c5c7ca",
+          "#edeff2"
+        ]
+      },
+      "row-alt": {
+        "role": "neutral",
+        "displayName": "Row Stripe",
+        "canonical": "#fafbfc",
+        "oklch": "oklch(98.8% 0.002 247.8)",
+        "cssVar": "--row-alt",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#232425",
+          "#3f4041",
+          "#5d5e5e",
+          "#7f8081",
+          "#a1a1a2",
+          "#c6c7c8",
+          "#edeeef"
+        ]
+      },
+      "row-hover": {
+        "role": "neutral",
+        "displayName": "Row Hover",
+        "canonical": "#f1f5f9",
+        "oklch": "oklch(96.8% 0.007 247.9)",
+        "cssVar": "--row-hover",
+        "tonalRamp": [
+          "#090b0e",
+          "#212427",
+          "#3d4043",
+          "#5b5e61",
+          "#7d8184",
+          "#9ea2a6",
+          "#c4c8cc",
+          "#ebeff3"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Cool Hairline",
+        "canonical": "#e1e4e8",
+        "oklch": "oklch(91.8% 0.006 255.5)",
+        "cssVar": "--line",
+        "tonalRamp": [
+          "#090b0e",
+          "#222427",
+          "#3e4043",
+          "#5b5e61",
+          "#7e8084",
+          "#9fa2a5",
+          "#c5c7cb",
+          "#eceff3"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "#c8cdd3",
+        "oklch": "oklch(84.6% 0.010 252.8)",
+        "cssVar": "--line-strong",
+        "tonalRamp": [
+          "#080b0f",
+          "#212429",
+          "#3c4045",
+          "#5a5e63",
+          "#7c8186",
+          "#9da2a8",
+          "#c3c8ce",
+          "#eaeff5"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1b1f24",
+        "oklch": "oklch(23.7% 0.011 254.1)",
+        "cssVar": "--ink",
+        "tonalRamp": [
+          "#080b10",
+          "#20242a",
+          "#3c4046",
+          "#595e64",
+          "#7c8187",
+          "#9da2a9",
+          "#c2c8cf",
+          "#e9eff6"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink Two",
+        "canonical": "#3d444c",
+        "oklch": "oklch(38.3% 0.016 251.8)",
+        "cssVar": "--ink-2",
+        "tonalRamp": [
+          "#060c12",
+          "#1e252c",
+          "#3a4048",
+          "#575e67",
+          "#79818a",
+          "#9aa2ac",
+          "#c0c8d2",
+          "#e7f0fa"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink Three",
+        "canonical": "#5c636b",
+        "oklch": "oklch(49.6% 0.015 251.7)",
+        "cssVar": "--ink-3",
+        "tonalRamp": [
+          "#070c12",
+          "#1f252b",
+          "#3a4048",
+          "#575e66",
+          "#7a8189",
+          "#9ba2ab",
+          "#c0c8d1",
+          "#e7eff9"
+        ]
+      },
+      "ok": {
+        "role": "state",
+        "displayName": "Done Green",
+        "canonical": "#2c7a3a",
+        "oklch": "oklch(51.6% 0.124 146.9)",
+        "cssVar": "--ok",
+        "tonalRamp": [
+          "#001002",
+          "#002d0a",
+          "#014e18",
+          "#1f6f30",
+          "#479452",
+          "#6db976",
+          "#92e19b",
+          "#c9ffcd"
+        ]
+      },
+      "ok-soft": {
+        "role": "state",
+        "displayName": "Done Green Tint",
+        "canonical": "#ebf6ed",
+        "oklch": "oklch(96.2% 0.017 151.1)",
+        "cssVar": "--ok-soft",
+        "tonalRamp": [
+          "#060d08",
+          "#1e2620",
+          "#3a423b",
+          "#576059",
+          "#79837b",
+          "#9da89f",
+          "#c3cec5",
+          "#e7f2e9"
+        ]
+      },
+      "danger": {
+        "role": "state",
+        "displayName": "Fault Red",
+        "canonical": "#b42318",
+        "oklch": "oklch(50.0% 0.182 29.5)",
+        "cssVar": "--danger",
+        "tonalRamp": [
+          "#1f0000",
+          "#4b0000",
+          "#7c0300",
+          "#ad1a10",
+          "#d74839",
+          "#ff7361",
+          "#ffb5a9",
+          "#fee9e5"
+        ]
+      },
+      "danger-soft": {
+        "role": "state",
+        "displayName": "Fault Red Tint",
+        "canonical": "#fdeeec",
+        "oklch": "oklch(96.0% 0.017 26.6)",
+        "cssVar": "--danger-soft",
+        "tonalRamp": [
+          "#110908",
+          "#2c2120",
+          "#483d3b",
+          "#675a59",
+          "#8a7d7b",
+          "#afa19f",
+          "#d5c7c5",
+          "#faebe9"
+        ]
+      },
+      "warn": {
+        "role": "state",
+        "displayName": "Caution Amber",
+        "canonical": "#8a5300",
+        "oklch": "oklch(49.4% 0.109 66.9)",
+        "cssVar": "--warn",
+        "tonalRamp": [
+          "#140800",
+          "#361e00",
+          "#5c3601",
+          "#845002",
+          "#ab722f",
+          "#d29755",
+          "#fbbd7b",
+          "#feebd8"
+        ]
+      },
+      "warn-soft": {
+        "role": "state",
+        "displayName": "Caution Amber Tint",
+        "canonical": "#fff5e1",
+        "oklch": "oklch(97.3% 0.028 84.6)",
+        "cssVar": "--warn-soft",
+        "tonalRamp": [
+          "#110a01",
+          "#2a2314",
+          "#473f2f",
+          "#655d4c",
+          "#887f6d",
+          "#ada491",
+          "#d3c9b6",
+          "#f7edda"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page title in the page bar and the sign-in heading; the ramp ceiling (20px)."
+      },
+      "title-lg": {
+        "displayName": "Title Large",
+        "purpose": "Drawer headings only (18px)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel heads and empty-state titles (15px); shell company name and stat values at 650."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Grid cells, note text (max 70ch), detail values at 500. Root 14px desktop, 15px under 720px, 11pt print."
+      },
+      "body-strong": {
+        "displayName": "Body Strong",
+        "purpose": "Buttons, nav items, note authors; job numbers at 650 in link blue."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field labels, grid column headings, tags, chips (13px 600); meta, hints, breadcrumbs, detail labels and counts at 400-500 in ink-3."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Tabular numerals for every date, time, count and job number."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Webhook URLs and one-time secrets only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "subtle",
+        "value": "0 1px 2px rgba(27,31,36,.05)",
+        "purpose": "Panels, active side-nav item, photo tile hover."
+      },
+      {
+        "name": "overlay",
+        "value": "0 12px 32px rgba(31,30,30,.18), 0 2px 6px rgba(31,30,30,.08)",
+        "purpose": "User drawer over a rgba(31,30,30,.45) scrim."
+      },
+      {
+        "name": "focus",
+        "value": "0 0 0 3px rgba(200,56,12,.28)",
+        "purpose": "Focus ring on all focusable elements; inset on top-nav links and grid sort headings."
+      },
+      {
+        "name": "viewer-image",
+        "value": "0 8px 40px rgba(0,0,0,.5)",
+        "purpose": "Photo in the dark full-screen viewer only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": ".15s ease",
+        "purpose": "Colour, border and shadow changes on buttons, inputs, nav and photo tiles."
+      },
+      {
+        "name": "row-hover",
+        "value": ".12s ease",
+        "purpose": "Table row background on hover."
+      },
+      {
+        "name": "shimmer",
+        "value": "1.4s ease-in-out infinite",
+        "purpose": "Skeleton loading bars."
+      },
+      {
+        "name": "reduced-motion",
+        "value": ".01ms",
+        "purpose": "All animation and transition durations under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "960px",
+        "purpose": "Record and admin layouts to one column; detail grid two-up; side nav becomes a row."
+      },
+      {
+        "name": "mobile",
+        "value": "720px",
+        "purpose": "15px root, icon-only shell nav, full-width page-bar actions and search fields, grid restacks into cards, photos two-up."
+      },
+      {
+        "name": "print",
+        "value": "A4, 16mm 14mm margins",
+        "purpose": "Completion record: shell and page bar hidden, dark logo, 2px brand rule, details two-column, notes then photos two-up."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main outcome per view, e.g. Print / Save PDF in the job page bar.",
+      "html": "<button class=\"ds-btn ds-btn-primary\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2\"/><path d=\"M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6\"/><rect x=\"6\" y=\"14\" width=\"12\" height=\"8\" rx=\"1\"/></svg>Print / Save PDF</button>",
+      "css": ".ds-icon{width:18px;height:18px;flex:none;}.ds-btn{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:4px;border:1px solid #c8cdd3;background:#fff;color:#1b1f24;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease;}.ds-btn-primary{background:var(--accent,#c8380c);border-color:var(--accent,#c8380c);color:#fff;}.ds-btn-primary:hover{background:var(--accent-hover,#a82f0a);border-color:var(--accent-hover,#a82f0a);}.ds-btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Default button: white with a strong hairline, e.g. Clear in the Search panel.",
+      "html": "<button class=\"ds-btn2\">Clear</button>",
+      "css": ".ds-btn2{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:4px;border:1px solid var(--line-strong,#c8cdd3);background:#fff;color:#1b1f24;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s ease,border-color .15s ease;}.ds-btn2:hover{background:var(--panel-2,#f7f8fa);border-color:#aeb5bd;}.ds-btn2:active{background:#eef0f3;}.ds-btn2:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);}"
+    },
+    {
+      "name": "Keyword Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled 36px field with a 16px inset search icon; orange border and ring on focus.",
+      "html": "<label class=\"ds-field\"><span>Keyword</span><span class=\"ds-input-icon\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input class=\"ds-input\" type=\"search\" placeholder=\"Job number, task or location\"></span></label>",
+      "css": ".ds-field{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;display:flex;flex-direction:column;gap:6px;width:320px;}.ds-field>span:first-child{font-size:13px;font-weight:600;color:#3d444c;}.ds-input-icon{position:relative;}.ds-input-icon .ds-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:#5c636b;}.ds-input{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;width:100%;height:36px;padding:0 10px 0 34px;font-size:14px;background:#fff;border:1px solid #c8cdd3;border-radius:4px;box-sizing:border-box;transition:border-color .15s ease,box-shadow .15s ease;}.ds-input::placeholder{color:#7b828a;}.ds-input:hover{border-color:#aeb5bd;}.ds-input:focus{border-color:#c8380c;outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);}"
+    },
+    {
+      "name": "Shell Top Bar",
+      "kind": "nav",
+      "refersTo": "topbar",
+      "description": "Charcoal 56px bar: logo, company block, admin-only nav with 3px bright-orange current rule. Logo shown as a text stand-in; the build uses /img/tts-logo.svg.",
+      "html": "<header class=\"ds-topbar\"><b class=\"ds-logo\">tts<span>Built</span></b><div class=\"ds-org\"><span>Client Portal</span><b>Ventia</b></div><nav class=\"ds-topnav\"><a href=\"#\" aria-current=\"page\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>Client view</a><a href=\"#\">Control Panel</a></nav></header>",
+      "css": ".ds-icon{width:18px;height:18px;flex:none;}.ds-topbar{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;display:flex;align-items:center;gap:28px;height:56px;padding:0 24px;background:#1f1e1e;color:#f3f4f6;border-bottom:1px solid #000;font-size:14px;}.ds-logo{color:#ff4616;font-size:22px;font-weight:800;}.ds-logo span{color:#fff;}.ds-org{display:flex;flex-direction:column;padding-left:18px;border-left:1px solid #3a3b39;line-height:1.25;}.ds-org span{color:#b6bcc3;font-size:13px;font-weight:500;}.ds-org b{color:#fff;font-size:15px;font-weight:650;}.ds-topnav{display:flex;align-self:stretch;gap:4px;}.ds-topnav a{display:flex;align-items:center;gap:8px;padding:0 14px;margin-bottom:-1px;color:#b6bcc3;font-weight:600;text-decoration:none;border-bottom:3px solid transparent;transition:color .15s ease,border-color .15s ease;}.ds-topnav a:hover{color:#f3f4f6;}.ds-topnav a[aria-current=\"page\"]{color:#fff;border-bottom-color:#ff4616;}.ds-topnav a:focus-visible{outline:none;box-shadow:inset 0 0 0 3px rgba(200,56,12,.28);}"
+    },
+    {
+      "name": "Page Bar",
+      "kind": "nav",
+      "refersTo": "page-bar",
+      "description": "Slim white strip under the shell: breadcrumb, 20px page title, actions right.",
+      "html": "<div class=\"ds-pagebar\"><div class=\"ds-titles\"><div class=\"ds-crumbs\"><a href=\"#\">Completed Jobs</a><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m9 18 6-6-6-6\"/></svg>Job 1213</div><h1>VEN PM Maintenance Palmerston 13</h1></div><button class=\"ds-pb-btn\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2\"/><path d=\"M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6\"/><rect x=\"6\" y=\"14\" width=\"12\" height=\"8\" rx=\"1\"/></svg>Print / Save PDF</button></div>",
+      "css": ".ds-pagebar{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;display:flex;align-items:center;gap:16px;min-height:60px;padding:12px 24px;background:#fff;border-bottom:1px solid #e1e4e8;box-sizing:border-box;}.ds-titles{flex:1;}.ds-crumbs{display:flex;align-items:center;gap:6px;font-size:13px;color:#5c636b;margin-bottom:2px;}.ds-crumbs a{color:#2a6f94;text-decoration:none;font-weight:500;}.ds-crumbs a:hover{text-decoration:underline;}.ds-crumbs a:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);border-radius:4px;}.ds-crumbs .ds-icon{width:14px;height:14px;}.ds-pagebar h1{margin:0;font-size:20px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;color:#1b1f24;}.ds-pb-btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:4px;border:1px solid #c8380c;background:#c8380c;color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer;}.ds-pb-btn:hover{background:#a82f0a;border-color:#a82f0a;}.ds-pb-btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);}.ds-pb-btn .ds-icon{width:18px;height:18px;}"
+    },
+    {
+      "name": "Side Nav",
+      "kind": "nav",
+      "refersTo": "sidenav-item",
+      "description": "Control panel section nav; current item is a raised white tile in deep orange.",
+      "html": "<nav class=\"ds-sidenav\"><a href=\"#\" aria-current=\"page\">Users</a><a href=\"#\">Portal settings</a><a href=\"#\">AroFlo sync</a></nav>",
+      "css": ".ds-sidenav{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;display:flex;flex-direction:column;gap:2px;width:230px;padding:12px;background:#f2f3f5;font-size:14px;}.ds-sidenav a{padding:10px 12px;border-radius:4px;color:#3d444c;font-weight:600;text-decoration:none;}.ds-sidenav a:hover{background:#e6e9ed;color:#1b1f24;}.ds-sidenav a[aria-current=\"page\"]{background:#fff;color:#c8380c;box-shadow:0 1px 2px rgba(27,31,36,.05);}.ds-sidenav a:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);}"
+    },
+    {
+      "name": "Panel Head, Count and Tags",
+      "kind": "chip",
+      "refersTo": "panel-head",
+      "description": "Tinted 44px panel head with the parenthesised muted count; pill tags for role and status.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-head\"><b>Users</b><span class=\"ds-count\">2</span></div><div class=\"ds-body\"><span class=\"ds-tag ds-admin\">Admin</span><span class=\"ds-tag\">Client</span><span class=\"ds-tag ds-on\">Active</span><span class=\"ds-tag ds-off\">Disabled</span></div></div>",
+      "css": ".ds-panel{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;background:#fff;border:1px solid #e1e4e8;border-radius:6px;box-shadow:0 1px 2px rgba(27,31,36,.05);width:420px;}.ds-head{display:flex;align-items:center;gap:8px;min-height:44px;padding:10px 16px;background:#f7f8fa;border-bottom:1px solid #e1e4e8;border-radius:6px 6px 0 0;box-sizing:border-box;}.ds-head b{font-size:15px;font-weight:600;color:#1b1f24;}.ds-count{color:#5c636b;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;}.ds-count::before{content:\"(\";}.ds-count::after{content:\")\";}.ds-body{padding:16px;}.ds-tag{display:inline-flex;align-items:center;height:24px;padding:0 9px;margin:2px 4px 2px 0;border-radius:12px;background:#f7f8fa;border:1px solid #e1e4e8;color:#3d444c;font-size:13px;font-weight:500;}.ds-admin{background:#eaf3f8;border-color:#c9e0ec;color:#1d4f6b;}.ds-on{background:#ebf6ed;border-color:#bfe0c5;color:#1f5c2a;}.ds-off{background:#fdeeec;border-color:#f2c4bf;color:#8f1d14;}"
+    },
+    {
+      "name": "Client Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Selected client in the user drawer picker, removable.",
+      "html": "<span class=\"ds-chip\">Ventia<button aria-label=\"Remove\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg></button></span>",
+      "css": ".ds-chip{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;display:inline-flex;align-items:center;gap:2px;height:28px;padding:0 4px 0 11px;border-radius:14px;background:#fdf0ea;border:1px solid #f3c9b8;color:#8c2a08;font-size:13px;font-weight:600;}.ds-chip button{display:grid;place-items:center;width:22px;height:22px;border:none;border-radius:50%;background:none;color:inherit;cursor:pointer;}.ds-chip button:hover{background:#f8dccf;}.ds-chip button:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);}.ds-chip .ds-icon{width:14px;height:14px;}"
+    },
+    {
+      "name": "Jobs Grid",
+      "kind": "card",
+      "refersTo": "grid-head",
+      "description": "Flat sortable grid: grey header band of sort buttons, zebra rows, blue job numbers, right-aligned counts blank at zero. The sort direction is drawn as a CSS triangle here; the build currently uses text glyphs (drift).",
+      "html": "<div class=\"ds-gpanel\"><table class=\"ds-grid\"><thead><tr><th><button class=\"ds-sort ds-active\">Completed<span class=\"ds-mark\"></span></button></th><th><button class=\"ds-sort\">Job #</button></th><th><button class=\"ds-sort\">Task</button></th><th><button class=\"ds-sort\">Location</button></th><th class=\"ds-n\"><button class=\"ds-sort\">Notes</button></th><th class=\"ds-n\"><button class=\"ds-sort\">Photos</button></th></tr></thead><tbody><tr><td>10 Dec 2026</td><td><a class=\"ds-job\" href=\"#\">1280</a></td><td>VEN PM Maintenance Palmerston 13</td><td class=\"ds-s\">Pukatja Youth Centre</td><td class=\"ds-n\">2</td><td class=\"ds-n\">5</td></tr><tr><td>10 Dec 2026</td><td><a class=\"ds-job\" href=\"#\">1257</a></td><td>VEN PM Maintenance Katherine 14</td><td class=\"ds-s\">North Sydney</td><td class=\"ds-n\"></td><td class=\"ds-n\">3</td></tr><tr><td>08 Dec 2026</td><td><a class=\"ds-job\" href=\"#\">1213</a></td><td>Air conditioning service</td><td class=\"ds-s\">Darwin Depot</td><td class=\"ds-n\">1</td><td class=\"ds-n\"></td></tr></tbody></table></div>",
+      "css": ".ds-gpanel{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;background:#fff;border:1px solid #e1e4e8;border-radius:6px;box-shadow:0 1px 2px rgba(27,31,36,.05);overflow:hidden;}.ds-grid{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px;font-variant-numeric:tabular-nums;color:#1b1f24;}.ds-grid thead th{padding:0;background:#eef0f3;border-bottom:1px solid #c8cdd3;text-align:left;}.ds-sort{display:flex;align-items:center;gap:6px;width:100%;padding:8px 14px;background:none;border:0;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:#3d444c;text-align:left;}.ds-sort:hover{background:#e4e8ed;color:#1b1f24;}.ds-sort.ds-active{color:#1b1f24;}.ds-sort:focus-visible{outline:none;box-shadow:inset 0 0 0 3px rgba(200,56,12,.28);}.ds-mark{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #c8380c;}.ds-grid td{padding:8px 14px;border-bottom:1px solid #e1e4e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.ds-grid td:first-child{color:#3d444c;}.ds-grid tbody tr{cursor:pointer;transition:background .12s ease;}.ds-grid tbody tr:nth-child(even) td{background:#fafbfc;}.ds-grid tbody tr:hover td{background:#f1f5f9;}.ds-grid tbody tr:hover .ds-job{text-decoration:underline;}.ds-grid tbody tr:last-child td{border-bottom:none;}.ds-job{color:#2a6f94;font-weight:650;text-decoration:none;}.ds-job:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);}.ds-s{color:#3d444c;}.ds-n{width:86px;text-align:right;}.ds-n .ds-sort{justify-content:flex-end;}"
+    },
+    {
+      "name": "Job Details",
+      "kind": "custom",
+      "refersTo": "detail-cell",
+      "description": "Job details panel: label/value cells divided by vertical hairlines.",
+      "html": "<section class=\"ds-dpanel\"><div class=\"ds-dhead\">Job details</div><dl class=\"ds-dgrid\"><div><dt>Job #</dt><dd class=\"ds-num\">1213</dd></div><div><dt>Task</dt><dd>Air conditioning service</dd></div><div><dt>Location</dt><dd>Darwin Depot</dd></div><div><dt>Completed</dt><dd class=\"ds-num\">8 Dec 2026, 2:40 pm</dd></div></dl></section>",
+      "css": ".ds-dpanel{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;background:#fff;border:1px solid #e1e4e8;border-radius:6px;box-shadow:0 1px 2px rgba(27,31,36,.05);font-size:14px;}.ds-dhead{min-height:44px;padding:10px 16px;background:#f7f8fa;border-bottom:1px solid #e1e4e8;border-radius:6px 6px 0 0;font-size:15px;font-weight:600;color:#1b1f24;box-sizing:border-box;}.ds-dgrid{display:grid;grid-template-columns:120px minmax(0,2fr) minmax(0,2fr) minmax(0,1.4fr);margin:0;}.ds-dgrid>div{padding:12px 16px;border-right:1px solid #e1e4e8;min-width:0;}.ds-dgrid>div:last-child{border-right:none;}.ds-dgrid dt{font-size:13px;color:#5c636b;margin-bottom:2px;}.ds-dgrid dd{margin:0;font-weight:500;color:#1b1f24;overflow-wrap:anywhere;}.ds-num{font-variant-numeric:tabular-nums;}"
+    },
+    {
+      "name": "Photo Tile",
+      "kind": "custom",
+      "refersTo": "photo-card",
+      "description": "Captioned 4:3 evidence photo in the job record grid; opens the viewer.",
+      "html": "<button class=\"ds-photo\"><span class=\"ds-img\"></span><span class=\"ds-cap\"><b>Condenser after clean</b></span></button>",
+      "css": ".ds-photo{font-family:\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif;display:flex;flex-direction:column;width:200px;padding:0;border:1px solid #e1e4e8;border-radius:4px;background:#fff;overflow:hidden;cursor:zoom-in;text-align:left;transition:border-color .15s ease,box-shadow .15s ease;}.ds-photo:hover{border-color:#c8cdd3;box-shadow:0 1px 2px rgba(27,31,36,.05);}.ds-photo:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(200,56,12,.28);}.ds-img{display:block;width:100%;aspect-ratio:4/3;background:#e6e9ed;}.ds-cap{display:block;padding:8px 10px;}.ds-cap b{display:block;font-size:13px;font-weight:600;color:#1b1f24;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Site Record",
+    "overview": "The portal is a field-service work surface wearing TTS Built's own clothes. A near-black charcoal shell carries the real white-and-orange logo and the company block; under it a slim white page bar names the page, and below that sits a neutral, slightly cool grey workspace of white panels with tinted heads and cool hairlines. Everything a client needs to confirm work was done (dates, job numbers, notes, photos) is set in one workhorse system sans with tabular numerals, so the record reads like a dependable trade document rather than a dashboard.\n\nDensity is deliberately that of the category software users already know (AroFlo, Simpro), which the user chose over an earlier, roomier, warmer version: a 14px root, 36px controls, 44px panel heads, 16px panel padding, flat zebra-striped data grids with sortable column headings, and a 1400px page. It is played straight and kept tidy rather than restyled. Orange is the brand's voice but is spent sparingly: the 3px active rule under the current nav item, the one primary action, selection, sort direction and focus. Blue means \"go to\": links, breadcrumbs and job numbers.\n\nThe record must survive paper. The job page prints as an A4 completion record: chrome and page bar removed, dark logo, a 2px brand-orange rule, the job details as a two-column list, notes, then photos two-up.",
+    "keyCharacteristics": [
+      "Charcoal shell, white page bar, cool grey ground, white panels with tinted heads.",
+      "Compact, AroFlo-style density: 14px root, 36px controls, 44px panel heads.",
+      "Two oranges with separate jobs: bright for marks, deep for text and actions.",
+      "Blue reserved for links, breadcrumbs and job numbers.",
+      "One system sans, tabular numerals for every date, count and job number.",
+      "Lucide line icons at 2px stroke, 14 to 18px, coloured in ink-3 beside text.",
+      "Flat surfaces with one subtle shadow; heavy shadow only on overlays.",
+      "Prints to a clean A4 report."
+    ],
+    "rules": [
+      {
+        "name": "The Two Oranges Rule",
+        "body": "Bright TTS orange is a mark (rules, underlines, logo); deep orange is for anything read or pressed. If it is text, a fill behind text, or a focus ring, it is the deep orange.",
+        "section": "colors"
+      },
+      {
+        "name": "The Blue Means Go-To Rule",
+        "body": "Blue appears only on things that navigate: links, breadcrumbs and job numbers. Orange never marks a link, blue never marks an action.",
+        "section": "colors"
+      },
+      {
+        "name": "The Shell Stays Up Top Rule",
+        "body": "Charcoal belongs to the top bar (and the dark photo viewer). The workspace stays cool and light; no dark cards or dark sections inside it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Cool Neutral Rule",
+        "body": "Workspace greys are neutral to slightly cool (blue-grey undertone). Warm beiges and taupes are retired; the only warmth on the page comes from the two oranges.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Truth Rule",
+        "body": "Every date, time, count and job number is set with tabular numerals, so columns of records align and compare at a glance.",
+        "section": "typography"
+      },
+      {
+        "name": "The Weight Not Size Rule",
+        "body": "The ramp tops out at 20px. New screens add emphasis with 600 weight and ink level, not with larger type.",
+        "section": "typography"
+      },
+      {
+        "name": "The Hairline First Rule",
+        "body": "A surface is separated by a 1px cool line before it is lifted by a shadow. Shadows stronger than Subtle appear only on overlays.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep bright TTS orange to marks (3px nav underline, 2px print rule, logo) and use deep orange for every orange text, fill and focus ring.",
+      "**Do** set dates, times, counts and job numbers in tabular numerals, and job numbers in blue at 650.",
+      "**Do** keep the compact density: 36px controls (30px small), 44px panel heads on the panel tint, 16px panel bodies, 8px by 14px grid cells.",
+      "**Do** put the page title, breadcrumb and page actions in the page bar, not inside the page column.",
+      "**Do** separate surfaces with a 1px cool hairline and the Subtle shadow; reserve the Overlay shadow for drawers.",
+      "**Do** use Lucide line icons at 2px stroke (18px default, 16px in inputs and tallies, 14px in breadcrumbs), coloured ink-3 beside text.",
+      "**Do** keep one primary orange button per view and make it the job's main outcome.",
+      "**Do** hide sections and cells that have nothing in them rather than showing dashes or \"none\".",
+      "**Do** check every new record layout in print: chrome and page bar hidden, notes and photos unbroken, logo and brand rule on top.",
+      "**Do** keep text at ink-3 or darker; zero and meta states use ink-3, not a lighter grey."
+    ],
+    "donts": [
+      "**Don't** set the bright #ff4616 orange as text or as a fill behind text on white.",
+      "**Don't** colour links orange or actions blue.",
+      "**Don't** introduce a second display or text typeface; mono is only for secrets and URLs to copy.",
+      "**Don't** raise the type ramp above 20px to add emphasis.",
+      "**Don't** reintroduce warm beige or taupe greys into the workspace.",
+      "**Don't** bring charcoal into the workspace as dark cards or dark sections.",
+      "**Don't** put counts in pills or badges; they are muted parenthesised text.",
+      "**Don't** mix icon sets, filled icons or text glyphs in place of icons.",
+      "**Don't** use heavy or hard offset shadows on resting panels.",
+      "**Don't** add small caption labels above page or panel headings; the \"Client Portal\" caption is part of the shell's company block only, and the page-bar breadcrumb is navigation, not a label."
+    ]
+  }
+}

@@ -9,6 +9,8 @@ export const DEFAULT_SETTINGS = {
   // AroFlo moves completed jobs to Archived once invoiced; include them so history doesn't vanish.
   includeArchived: true,
   portalName: 'Client Portal',
+  // Safety-net check for missed webhooks. Webhooks do most of the work.
+  syncIntervalMinutes: 60,
 };
 
 export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {

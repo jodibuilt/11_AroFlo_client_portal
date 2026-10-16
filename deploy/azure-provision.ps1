@@ -102,7 +102,7 @@ $settings = [ordered]@{
   NODE_ENV                            = 'production'
   DATA_DIR                            = '/home/data'           # persistent across restarts and deploys
   WEBSITES_ENABLE_APP_SERVICE_STORAGE = 'true'
-  SCM_DO_BUILD_DURING_DEPLOYMENT      = 'true'                 # runs "npm install" on Azure during deploy
+  SCM_DO_BUILD_DURING_DEPLOYMENT      = 'true'                 # runs "npm install" on Azure during deploy; keep on
 }
 if ($dotenv['AROFLO_HOST_IP']) { $settings['AROFLO_HOST_IP'] = $dotenv['AROFLO_HOST_IP'] }
 

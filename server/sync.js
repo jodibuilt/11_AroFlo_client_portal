@@ -2,12 +2,15 @@
 // of the API allowance as possible:
 //
 //  * First run: one paged download of every Completed/Archived task, with notes and photos.
-//  * Every few minutes: the `lastupdate` zone (which AroFlo doesn't count toward the daily
-//    limit) lists tasks changed since last time; each one is re-fetched by id (which uses
-//    the separate 20,000/day "single record" allowance).
-//  * AroFlo webhook (Event Message on task completion): triggers that check immediately.
-//  * Hourly: client list. Daily: re-check jobs completed in the last 30 days, in case notes
-//    or photos are added to a finished job without the task itself being marked as changed.
+//  * AroFlo webhook (Task Completed / Archived / Add Task Note): the main trigger. The
+//    payload carries the task id, so just that task is fetched by id (separate 20,000/day
+//    "single record" allowance, not the 2,000/day limit).
+//  * Change check (on every webhook and as a safety net, default hourly): the `lastupdate`
+//    zone (free under the daily limit) lists tasks changed since last time. Only tasks we
+//    already hold are re-fetched, to catch edits, reopened jobs and deletions; busy
+//    in-progress jobs elsewhere in AroFlo are ignored. New completions arrive by webhook.
+//  * Daily: client list, and a re-check of jobs completed in the last 7 days, which picks
+//    up any completion whose webhook was missed and photos added just after completion.
 //
 // Photo files are downloaded once (for clients linked to a portal user) and kept on disk.
 import crypto from 'node:crypto';
@@ -17,13 +20,15 @@ import path from 'node:path';
 const MIN = 60_000;
 const DONE_STATUSES = new Set(['completed', 'archived']);
 const PHOTO_EXT = /\.(jpe?g|png|gif|webp|bmp)$/i;
-const CLIENT_REFRESH_EVERY = 60 * MIN;
+const CLIENT_REFRESH_EVERY = 24 * 60 * MIN;
 const RECENT_REFRESH_EVERY = 24 * 60 * MIN;
-const RECENT_DAYS = 30;
+const RECENT_DAYS = 7;
 const PHOTO_RETRY_EVERY = 6 * 60 * MIN;
 const MAX_QUEUED_TASKS = 50;
 
-export function createSync({ aroflo, store, intervalMinutes = 5, log = console }) {
+// getIntervalMinutes is read before every scheduled check, so changes in Portal Settings
+// apply without a restart.
+export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log = console }) {
   const status = {
     running: false,
     lastRunAt: null,
@@ -154,13 +159,19 @@ export function createSync({ aroflo, store, intervalMinutes = 5, log = console }
       if (at > maxAt) { maxAt = at; keysAtMax = new Set(); }
       if (at === maxAt) keysAtMax.add(key);
     }
+    let fetched = 0;
     for (const [taskId, deleted] of changed) {
-      if (deleted) store.removeJob(taskId);
-      else await syncTask(taskId);
+      if (deleted) {
+        store.removeJob(taskId);
+      } else if (store.getJob(taskId)) {
+        // Only jobs the portal already shows: catches edits, reopened jobs and deletions.
+        await syncTask(taskId);
+        fetched++;
+      }
     }
     // Only move the cursor once every change was applied, so a failure is retried next time.
     store.setState('cursor', { at: maxAt, keys: [...keysAtMax] });
-    return changed.size;
+    return fetched;
   }
 
   async function refreshClients() {
@@ -233,8 +244,11 @@ export function createSync({ aroflo, store, intervalMinutes = 5, log = console }
   return {
     status,
     start() {
-      setTimeout(run, 2000);
-      setInterval(run, Math.max(1, intervalMinutes) * MIN);
+      const schedule = (delay) => setTimeout(async () => {
+        await run();
+        schedule(Math.max(5, Number(getIntervalMinutes()) || 60) * MIN);
+      }, delay);
+      schedule(2000);
     },
     run,
     runSoon,
