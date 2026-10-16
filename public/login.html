@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <script type="module" src="/js/login.js"></script>
+</head>
+<body class="login-page">
+  <header class="topbar"><span class="brand"><span class="brand-mark" id="mark">CP</span><span class="brand-name" id="portal-name">Client Portal</span></span></header>
+  <div class="login-wrap">
+    <form class="panel login-card" id="form" novalidate>
+      <div class="panel-head" id="title">Sign in</div>
+      <div class="panel-body">
+        <p id="intro">Sign in to view your completed jobs, notes and photos.</p>
+        <div id="msg"></div>
+        <label class="field" id="code-field" hidden><span>Setup code</span><input type="text" name="setupCode" autocomplete="off"></label>
+        <label class="field" id="name-field" hidden><span>Your name</span><input type="text" name="name" autocomplete="name"></label>
+        <label class="field"><span>Email</span><input type="email" name="email" autocomplete="username" required autofocus></label>
+        <label class="field"><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
+        <button class="btn primary" type="submit" id="submit">Sign in</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>
