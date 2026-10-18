@@ -13,6 +13,7 @@ mount(root,
 
 const SECTIONS = [
   ['users', 'Users', 'user', renderUsers],
+  ['clients', 'Clients', 'briefcase', renderClients],
   ['settings', 'Portal settings', 'cog', renderSettings],
   ['status', 'AroFlo sync', 'pulse', renderStatus],
 ];
@@ -157,7 +158,7 @@ function openUserDrawer(user) {
   const clientField = h('div', { class: 'field wide' },
     h('span', {}, 'Linked AroFlo clients'),
     h('div', { class: 'picker' }, chips, search, list),
-    h('span', { class: 'hint' }, 'The user sees completed jobs for these clients only.'));
+    h('span', { class: 'hint' }, 'The user sees completed jobs for these clients only. Linking a client makes it active in the portal.'));
   const syncRole = () => { clientField.hidden = role.value !== 'client'; };
   role.addEventListener('change', syncRole);
   syncRole();
@@ -243,6 +244,90 @@ function passwordReveal(email, password, isNew) {
     h('code', {}, password), copy);
 }
 
+// ---------- Clients ----------
+let clientFilter = { q: '', show: 'all' };
+
+async function renderClients(flash) {
+  mount(content, h('div', { class: 'panel' }, loading(6)));
+  let clients;
+  try {
+    clients = await loadClients();
+  } catch (err) {
+    return mount(content, errorBox(err.message));
+  }
+  const tableHost = h('div');
+  const activeCount = () => clients.filter((c) => c.active).length;
+  const countEl = h('span', { class: 'count' }, '');
+  const msg = h('div');
+
+  async function toggle(c, input) {
+    const want = input.checked;
+    if (!want && c.users && !confirm(`${c.clientName} has ${plural(c.users, 'linked user')}. Deactivating removes its jobs from the portal and those users will see nothing. Continue?`)) {
+      input.checked = true;
+      return;
+    }
+    input.disabled = true;
+    try {
+      await api(`/api/admin/clients/${encodeURIComponent(c.clientId)}`, { method: 'PUT', body: { active: want } });
+      c.active = want;
+      if (!want) c.jobs = 0;
+      clientsCache = null;
+      mount(msg, okBox(want
+        ? `${c.clientName} is active. Its completed jobs are downloading now.`
+        : `${c.clientName} is inactive. Its jobs were removed and it is no longer read from AroFlo.`));
+      draw();
+    } catch (err) {
+      input.checked = !want;
+      mount(msg, errorBox(err.message));
+    }
+    input.disabled = false;
+  }
+
+  function draw() {
+    countEl.textContent = `${activeCount()} active of ${clients.length}`;
+    const needle = clientFilter.q.trim().toLowerCase();
+    const rows = clients
+      .filter((c) => clientFilter.show === 'all' || (clientFilter.show === 'active') === c.active)
+      .filter((c) => !needle || c.clientName.toLowerCase().includes(needle))
+      .sort((a, b) => (b.active - a.active) || a.clientName.localeCompare(b.clientName));
+    if (!rows.length) return mount(tableHost, emptyState('search', 'No clients match', 'Try a different name or filter.'));
+    mount(tableHost, h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, ['Client', 'In portal', 'Linked users', 'Jobs synced'].map((t) => h('th', { scope: 'col' }, t)))),
+      h('tbody', {}, rows.slice(0, 300).map((c) => {
+        const input = h('input', { type: 'checkbox', role: 'switch', checked: c.active, 'aria-label': `${c.clientName} active in portal` });
+        input.addEventListener('change', () => toggle(c, input));
+        return h('tr', {},
+          h('td', {}, c.clientName),
+          h('td', {}, h('label', { class: 'switch' }, input, h('span', { class: 'switch-track', 'aria-hidden': 'true' }), h('span', {}, c.active ? 'Active' : 'Inactive'))),
+          h('td', { class: 'num' }, c.users || ''),
+          h('td', { class: 'num' }, c.active ? c.jobs : ''));
+      })))),
+    rows.length > 300 ? h('p', { class: 'hint panel-body' }, `Showing 300 of ${rows.length}. Search to narrow the list.`) : null);
+  }
+
+  draw();
+  mount(content,
+    flash || null,
+    h('div', { class: 'panel' },
+      h('div', { class: 'panel-head' },
+        h('h2', {}, 'Clients', countEl),
+        h('span', { class: 'spacer' }),
+        h('select', { 'aria-label': 'Show', class: 'compact-select', onchange: (e) => { clientFilter.show = e.target.value; draw(); } },
+          [['all', 'All clients'], ['active', 'Active only'], ['inactive', 'Inactive only']]
+            .map(([v, l]) => h('option', { value: v, selected: clientFilter.show === v }, l))),
+        h('div', { class: 'input-icon' }, icon('search'),
+          h('input', { type: 'search', placeholder: 'Search clients', value: clientFilter.q, 'aria-label': 'Search clients',
+            oninput: (e) => { clientFilter.q = e.target.value; draw(); } })),
+        h('button', { class: 'btn small', type: 'button', title: 'Fetch the latest client list from AroFlo (1 API call)',
+          onclick: async (e) => { e.currentTarget.disabled = true; try { await loadClients(true); renderClients(okBox('Client list refreshed from AroFlo.')); } catch (err) { mount(msg, errorBox(err.message)); e.currentTarget.disabled = false; } } },
+          icon('refresh'), 'Refresh list')),
+      h('div', { class: 'panel-body' }, msg,
+        h('p', { class: 'hint' }, 'Only active clients are read from AroFlo and shown in the portal, so inactive clients use no API calls. Linking a client to a user activates it automatically.')),
+      tableHost,
+    ),
+  );
+}
+
 // ---------- Settings ----------
 async function renderSettings() {
   mount(content, h('div', { class: 'panel' }, loading(4)));
@@ -257,6 +342,7 @@ async function renderSettings() {
     h('input', { type: 'radio', name, value, checked: settings[name] === value }),
     h('span', {}, label, h('div', { class: 'hint' }, hint)));
   const includeArchived = h('input', { type: 'checkbox', checked: settings.includeArchived });
+  const syncFrom = h('input', { type: 'date', value: settings.syncFrom || '2026-01-01', required: true });
   const interval = h('select', { name: 'syncIntervalMinutes' },
     [[15, 'Every 15 minutes'], [30, 'Every 30 minutes'], [60, 'Every hour (recommended)'], [180, 'Every 3 hours'], [360, 'Every 6 hours'], [720, 'Every 12 hours'], [1440, 'Once a day']]
       .map(([v, label]) => h('option', { value: String(v), selected: Number(settings.syncIntervalMinutes) === v }, label)));
@@ -271,6 +357,7 @@ async function renderSettings() {
         fileVisibility: fd.get('fileVisibility'),
         includeArchived: includeArchived.checked,
         syncIntervalMinutes: Number(interval.value),
+        syncFrom: syncFrom.value,
       } });
       mount(msg, okBox('Settings saved. Clients see the change next time they open a page.'));
     } catch (err) {
@@ -291,6 +378,8 @@ async function renderSettings() {
           radio('fileVisibility', 'all', 'All photos', 'Also shows photos marked “Internal Only”. Other documents are never shown.')),
         h('label', { class: 'check wide' }, includeArchived,
           h('span', {}, 'Include archived jobs', h('div', { class: 'hint' }, 'AroFlo moves completed jobs to Archived after invoicing. Leave on so clients keep their full history.'))),
+        h('label', { class: 'field' }, h('span', {}, 'Sync jobs completed on or after'), syncFrom,
+          h('span', { class: 'hint' }, 'Older jobs are never read from AroFlo. Moving this later removes older jobs; moving it earlier downloads them for active clients.')),
         h('label', { class: 'field' }, h('span', {}, 'Backup check for missed webhooks'), interval,
           h('span', { class: 'hint' }, 'AroFlo webhooks update the portal as jobs change. This check only catches anything a webhook missed.')),
       ),
@@ -345,12 +434,12 @@ async function renderStatus() {
           stat('Last successful sync', localTime(y.lastSuccessAt)),
           stat('Last webhook from AroFlo', localTime(y.lastWebhookAt)),
           stat('Completed jobs stored', y.jobs),
-          stat('Photos downloaded', `${y.photosSaved} of ${y.photos}`),
-          stat('AroFlo clients', y.clients),
+          stat('Photos stored on server', `${y.photosSaved.toLocaleString()} of ${y.photos.toLocaleString()} available`),
+          stat('Active clients', `${y.activeClients} of ${y.clients}`),
         ),
         h('p', { class: 'hint' },
           'Completed jobs, notes and photos are copied into the portal, so clients viewing jobs never use the AroFlo API. ',
-          'Photos are downloaded for clients linked to a user. Last full download: ', localTime(y.fullSyncAt), '.'),
+          'Photos of jobs from the last 30 days are pre-downloaded in the background (newest first, while storage has room); older jobs\' photos download when first opened and are stored smaller. The least recently viewed are cleared when storage is full. Last full download: ', localTime(y.fullSyncAt), '.'),
       ),
     ),
     h('div', { class: 'panel' },

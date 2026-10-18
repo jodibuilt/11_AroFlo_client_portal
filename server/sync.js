@@ -1,7 +1,10 @@
 // Keeps the local copy of completed jobs in step with AroFlo while spending as little
 // of the API allowance as possible:
 //
-//  * First run: one paged download of every Completed/Archived task, with notes and photos.
+//  * Only ACTIVE clients (chosen in Control Panel → Clients, or linked to a user) are read.
+//    Everything below is limited to them; other AroFlo clients cost no API calls.
+//  * First run: one paged download of each active client's Completed/Archived tasks.
+//    Activating a client later downloads just that client.
 //  * AroFlo webhook (Task Completed / Archived / Add Task Note): the main trigger. The
 //    payload carries the task id, so just that task is fetched by id (separate 20,000/day
 //    "single record" allowance, not the 2,000/day limit).
@@ -9,26 +12,41 @@
 //    zone (free under the daily limit) lists tasks changed since last time. Only tasks we
 //    already hold are re-fetched, to catch edits, reopened jobs and deletions; busy
 //    in-progress jobs elsewhere in AroFlo are ignored. New completions arrive by webhook.
-//  * Daily: client list, and a re-check of jobs completed in the last 7 days, which picks
-//    up any completion whose webhook was missed and photos added just after completion.
+//  * Webhooks for inactive clients are ignored without calling AroFlo (the payload carries
+//    the client's name).
+//  * Hourly: each active client's jobs completed in the last 2 days (new completions
+//    without relying on webhooks; ~1 call per active client).
+//  * Daily: client list, and a re-check of active clients' jobs completed in the last 7
+//    days, which picks up any completion whose webhook was missed.
 //
-// Photo files are downloaded once (for clients linked to a portal user) and kept on disk.
+// Photo files: recent jobs' photos (completed within compressAfterDays) are pre-downloaded
+// full-size in the background while the cache has room; anything else downloads the first
+// time someone opens the job. Photos of older jobs are stored shrunk. The cache is capped
+// (least recently viewed photos are evicted first).
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { shrink, SHRUNK_TYPE } from './images.js';
 
 const MIN = 60_000;
-const DONE_STATUSES = new Set(['completed', 'archived']);
 const PHOTO_EXT = /\.(jpe?g|png|gif|webp|bmp)$/i;
 const CLIENT_REFRESH_EVERY = 24 * 60 * MIN;
 const RECENT_REFRESH_EVERY = 24 * 60 * MIN;
 const RECENT_DAYS = 7;
-const PHOTO_RETRY_EVERY = 6 * 60 * MIN;
+const COMPRESS_EVERY = 24 * 60 * MIN;
+const NEW_JOBS_EVERY = 55 * MIN;       // with the hourly cycle: once per cycle
+const NEW_JOBS_DAYS = 2;              // look back this far for newly completed jobs
+const PREFETCH_PER_RUN = 40;          // jobs per cycle (1 single-job lookup each)
+const PREFETCH_BUDGET = 0.7;          // stop pre-downloading at 70% of the photo cache cap
 const MAX_QUEUED_TASKS = 50;
 
 // getIntervalMinutes is read before every scheduled check, so changes in Portal Settings
 // apply without a restart.
-export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log = console }) {
+// getSyncFrom returns the earliest completed date (YYYY-MM-DD) to sync; older jobs are
+// never requested from AroFlo or kept.
+export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSyncFrom = () => '', photoCacheBytes = 2000 * 1024 * 1024, compressAfterDays = 30, log = console }) {
+  // Photos of jobs completed before this date are stored shrunk (see images.js).
+  const compressBefore = () => new Date(Date.now() - compressAfterDays * 24 * 60 * MIN).toISOString().slice(0, 10);
   const status = {
     running: false,
     lastRunAt: null,
@@ -38,6 +56,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
     lastChanges: 0,
   };
   const queuedTasks = new Set();
+  const queuedClients = new Set(); // client ids to download after being activated
   const photoAttempts = new Map(); // taskId -> time of last failed download attempt
   let running = null;
   let runAgain = false;
@@ -56,14 +75,21 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
   }
 
   async function applyTask(task, { downloadAll = false } = {}) {
-    const st = String(task.status || '').toLowerCase();
-    if (!DONE_STATUSES.has(st) || !task.client?.clientid) {
+    // A job counts as completed when AroFlo has a completed date for it, whatever its
+    // status or substatus (Completed, Ready for Invoicing, To Be Reviewed, Archived, ...).
+    const completedOn = normDate(task.completeddatetime || task.completeddate);
+    if (!completedOn || !task.client?.clientid || !store.isClientActive(task.client.clientid)) {
       store.removeJob(task.taskid);
       return;
     }
     const job = mapTask(task);
+    const from = getSyncFrom();
+    if (from && job.completed && job.completed.slice(0, 10) < from) {
+      store.removeJob(job.taskId);
+      return;
+    }
     store.saveJob(job);
-    if (downloadAll || store.isClientLinked(job.clientId)) await downloadPhotos(job);
+    if (downloadAll) await downloadPhotos(job);
   }
 
   async function syncTask(taskId, opts) {
@@ -74,14 +100,19 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
 
   async function downloadPhotos(job) {
     let failed = false;
+    const keep = new Set(); // this job's files: never evicted by the trim below
     for (const p of job.photos) {
       if (store.getPhoto(job.taskId, p.id)?.file || !p.url) continue;
       try {
         const { contentType, body } = await aroflo.fetchDocument(p.url);
         if (!/^image\//i.test(contentType)) continue;
         const file = `${crypto.createHash('sha256').update(p.id).digest('hex')}.bin`;
-        await fs.promises.writeFile(path.join(store.fileDir, file), body);
-        store.setPhotoFile(job.taskId, p.id, file, contentType);
+        // Photos of jobs completed more than compressAfterDays ago are stored shrunk.
+        const old = job.completed && job.completed.slice(0, 10) < compressBefore();
+        const small = old ? await shrink(body) : null;
+        await fs.promises.writeFile(path.join(store.fileDir, file), small || body);
+        store.setPhotoFile(job.taskId, p.id, file, small ? SHRUNK_TYPE : contentType, Boolean(small));
+        keep.add(file);
       } catch (err) {
         failed = true;
         log.warn(`Photo ${p.name} on job ${job.jobNumber} not downloaded yet: ${err.message}`);
@@ -89,15 +120,50 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
     }
     if (failed) photoAttempts.set(job.taskId, Date.now());
     else photoAttempts.delete(job.taskId);
+    for (const p of store.photosForJob(job.taskId)) if (p.file) keep.add(p.file);
+    await trimPhotoCache(keep);
   }
+
+  // Keeps the photo cache under photoCacheBytes by deleting the least recently viewed
+  // files (serving a photo touches its file). Evicted photos re-download when opened.
+  // Non-blocking: on network storage, deleting many large files can take a while.
+  let trimming = null;
+  function trimPhotoCache(keep = new Set()) {
+    if (trimming) return trimming;
+    trimming = (async () => {
+      const names = await fs.promises.readdir(store.fileDir).catch(() => []);
+      const files = [];
+      for (const name of names) {
+        const full = path.join(store.fileDir, name);
+        const st = await fs.promises.stat(full).catch(() => null);
+        if (st) files.push({ name, full, size: st.size, used: st.mtimeMs });
+      }
+      let total = files.reduce((sum, f) => sum + f.size, 0);
+      if (total <= photoCacheBytes) return;
+      files.sort((x, y) => x.used - y.used);
+      for (const f of files) {
+        if (total <= photoCacheBytes * 0.9) break;
+        if (keep.has(f.name)) continue;
+        try {
+          await fs.promises.rm(f.full, { force: true });
+          store.forgetPhotoFile(f.name);
+          total -= f.size;
+        } catch { /* in use; try the next one */ }
+      }
+    })().catch((err) => log.warn(`Photo cache trim failed: ${err.message}`)).finally(() => { trimming = null; });
+    return trimming;
+  }
+
 
   // Pages through a task query with notes and photos joined, handling each page right
   // away because AroFlo's photo links expire after 10 minutes.
+  // AroFlo can return short pages part-way through a result set (with joins), so keep
+  // going until a page comes back empty, and skip any task already handled.
   async function eachTask(where, onTask) {
-    let pageSize = 25;
-    let done = 0;
-    for (let guard = 0; guard < 1000; guard++) {
-      const page = Math.floor(done / pageSize) + 1;
+    let pageSize = 50;
+    let page = 1;
+    const handled = new Set();
+    for (let guard = 0; guard < 2000; guard++) {
       let resp;
       try {
         resp = await aroflo.get([
@@ -108,28 +174,47 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
       } catch (err) {
         // Status 8 = response over AroFlo's 3.5 MB limit: retry with smaller pages.
         if (err.status === '8' && pageSize > 2) {
+          const offset = (page - 1) * pageSize;
           pageSize = Math.max(2, Math.floor(pageSize / 2));
-          done = Math.floor(done / pageSize) * pageSize;
+          page = Math.floor(offset / pageSize) + 1;
           continue;
         }
         throw err;
       }
       const rows = resp.tasks || [];
-      for (const task of rows) await onTask(task);
-      done += rows.length;
-      if (rows.length < pageSize) return;
+      if (!rows.length) return;
+      for (const task of rows) {
+        if (handled.has(task.taskid)) continue;
+        handled.add(task.taskid);
+        await onTask(task);
+      }
+      page++;
     }
   }
 
-  const DONE_WHERE = ['and|(|status|=|completed', 'or|status|=|archived|)'];
+  // Tasks with a completed date on or after the cutoff, in any status. AroFlo's WHERE has
+  // no ">=", so ask for completed after the day before the cutoff.
+  const fromWhere = () => {
+    const from = getSyncFrom();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '')) return ['and|datecompleted|>|1900-01-01'];
+    const dayBefore = new Date(`${from}T00:00:00Z`);
+    dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
+    return [`and|datecompleted|>|${dayBefore.toISOString().slice(0, 10)}`];
+  };
+
+  const clientWhere = (c) => `and|clientname|=|${c.clientName}`;
+
+  async function downloadClient(client, seen) {
+    await eachTask([clientWhere(client), ...fromWhere()], async (task) => {
+      seen?.add(task.taskid);
+      await applyTask(task);
+    });
+  }
 
   async function fullSync() {
     const startedAt = utcStamp(Date.now() - 2 * MIN);
     const seen = new Set();
-    await eachTask(DONE_WHERE, async (task) => {
-      seen.add(task.taskid);
-      await applyTask(task);
-    });
+    for (const client of store.activeClients()) await downloadClient(client, seen);
     for (const id of store.allJobIds()) if (!seen.has(id)) store.removeJob(id);
     store.setState('cursor', { at: startedAt, keys: [] });
     store.setState('fullSyncAt', new Date().toISOString());
@@ -182,17 +267,91 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
     store.setState('clientsAt', Date.now());
   }
 
+  // Hourly: each active client's jobs completed in the last NEW_JOBS_DAYS days, so new
+  // completions arrive even without webhooks (about 1 call per active client).
+  async function checkNewCompletions() {
+    const since = new Date(Date.now() - NEW_JOBS_DAYS * 24 * 60 * MIN).toISOString().slice(0, 10);
+    const cutoff = fromWhere()[0].split('|').pop(); // day before the sync-from date
+    const after = since > cutoff ? since : cutoff;
+    for (const client of store.activeClients()) {
+      await eachTask([clientWhere(client), `and|datecompleted|>|${after}`], (task) => applyTask(task));
+    }
+    store.setState('newJobsAt', Date.now());
+  }
+
   async function refreshRecent() {
     const since = new Date(Date.now() - RECENT_DAYS * 24 * 60 * MIN).toISOString().slice(0, 10);
-    await eachTask([...DONE_WHERE, `and|datecompleted|>|${since}`], (task) => applyTask(task));
+    const recent = `and|datecompleted|>|${since}`;
+    const active = store.activeClients();
+    // A few active clients: ask per client. Many: one query for everyone is cheaper, and
+    // applyTask simply ignores jobs of inactive clients.
+    if (active.length && active.length <= 5) {
+      for (const client of active) await eachTask([clientWhere(client), recent], (task) => applyTask(task));
+    } else if (active.length) {
+      await eachTask([recent], (task) => applyTask(task));
+    }
     store.setState('recentAt', Date.now());
   }
 
-  async function fillMissingPhotos() {
-    for (const taskId of store.tasksMissingPhotos(25)) {
-      if (Date.now() - (photoAttempts.get(taskId) || 0) < PHOTO_RETRY_EVERY) continue;
-      await syncTask(taskId);
-    }
+
+  // Shrinks cached photos once their job is older than compressAfterDays. Runs in the
+  // background; each file is replaced via a temp file so a half-written photo is never served.
+  // Pre-downloads full-size photos for recent jobs (completed within compressAfterDays) so
+  // they open instantly. Newest first, a few dozen jobs per cycle, and only while the
+  // cache is under PREFETCH_BUDGET of its cap, so it never churns against eviction.
+  let prefetching = null;
+  const prefetchTried = new Set(); // jobs attempted this process (avoid retry loops)
+  async function cacheBytes() {
+    const names = await fs.promises.readdir(store.fileDir).catch(() => []);
+    let total = 0;
+    for (const name of names) total += (await fs.promises.stat(path.join(store.fileDir, name)).catch(() => ({ size: 0 }))).size;
+    return total;
+  }
+  function prefetchRecentPhotos() {
+    if (prefetching) return prefetching;
+    prefetching = (async () => {
+      let used = await cacheBytes();
+      let done = 0;
+      while (done < PREFETCH_PER_RUN && used < photoCacheBytes * PREFETCH_BUDGET) {
+        const next = store.recentJobsMissingPhotos(compressBefore(), PREFETCH_PER_RUN * 2).find((id) => !prefetchTried.has(id));
+        if (!next) break;
+        prefetchTried.add(next);
+        await syncTask(next, { downloadAll: true });
+        done++;
+        if (done % 5 === 0) used = await cacheBytes();
+      }
+    })().catch((err) => log.warn(`Photo pre-download failed: ${err.message}`)).finally(() => { prefetching = null; });
+    return prefetching;
+  }
+
+  let compressing = null;
+  function compressAgedPhotos() {
+    if (compressing) return compressing;
+    compressing = (async () => {
+      let saved = 0;
+      for (let batch = 0; batch < 100; batch++) {
+        const files = store.photosToCompress(compressBefore(), 50);
+        if (!files.length) break;
+        for (const name of files) {
+          const full = path.join(store.fileDir, name);
+          const original = await fs.promises.readFile(full).catch(() => null);
+          if (!original) { store.forgetPhotoFile(name); continue; }
+          const small = await shrink(original);
+          if (!small) return; // compression unavailable: stop, try again tomorrow
+          if (small.length < original.length) {
+            const stat = await fs.promises.stat(full);
+            await fs.promises.writeFile(`${full}.tmp`, small);
+            await fs.promises.rename(`${full}.tmp`, full);
+            await fs.promises.utimes(full, stat.atime, stat.mtime); // keep its "last viewed" time
+            saved += original.length - small.length;
+          }
+          store.markCompressed(name, small.length < original.length ? SHRUNK_TYPE : null);
+        }
+      }
+      store.setState('compressedAt', Date.now());
+      if (saved) log.warn?.(`Compressed aged photos, saved ${Math.round(saved / 1048576)} MB.`);
+    })().catch((err) => log.warn(`Photo compression failed: ${err.message}`)).finally(() => { compressing = null; });
+    return compressing;
   }
 
   const due = (key, every) => Date.now() - (store.getState(key) || 0) > every;
@@ -207,14 +366,21 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
       status.running = true;
       status.lastRunAt = new Date().toISOString();
       try {
+        for (const clientId of [...queuedClients]) {
+          queuedClients.delete(clientId);
+          const client = store.getClient(clientId);
+          if (client?.active && store.getState('cursor')) await downloadClient(client);
+        }
         for (const taskId of [...queuedTasks]) {
           queuedTasks.delete(taskId);
           await syncTask(taskId);
         }
         if (!store.hasClients() || due('clientsAt', CLIENT_REFRESH_EVERY)) await refreshClients();
         status.lastChanges = await incrementalSync();
+        if (due('newJobsAt', NEW_JOBS_EVERY)) await checkNewCompletions();
         if (due('recentAt', RECENT_REFRESH_EVERY)) await refreshRecent();
-        await fillMissingPhotos();
+        if (due('compressedAt', COMPRESS_EVERY)) compressAgedPhotos(); // background, not awaited
+        prefetchRecentPhotos(); // background, not awaited
         status.lastSuccessAt = new Date().toISOString();
         status.lastError = null;
       } catch (err) {
@@ -244,6 +410,9 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
   return {
     status,
     start() {
+      store.removeJobsOutsideActive();
+      setTimeout(() => trimPhotoCache().then(() => compressAgedPhotos()).then(() => prefetchRecentPhotos()), 15_000);
+      if (getSyncFrom()) store.removeJobsCompletedBefore(getSyncFrom());
       const schedule = (delay) => setTimeout(async () => {
         await run();
         schedule(Math.max(5, Number(getIntervalMinutes()) || 60) * MIN);
@@ -252,12 +421,30 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
     },
     run,
     runSoon,
-    // Called by the webhook. Task ids found in the payload are fetched first; either way
-    // the lastupdate check runs, so the webhook payload format doesn't matter.
-    notify(taskIds = []) {
+    // Called by the webhook. Task ids found in the payload are fetched first, then the free
+    // change check runs. When the payload names a client that isn't active, nothing is
+    // fetched at all.
+    notify(taskIds = [], { clientName } = {}) {
       status.lastWebhookAt = new Date().toISOString();
+      if (clientName) {
+        const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        if (!store.activeClients().some((c) => norm(c.clientName) === norm(clientName))) {
+          status.lastWebhookIgnored = status.lastWebhookAt;
+          return;
+        }
+      }
       for (const id of taskIds) if (queuedTasks.size < MAX_QUEUED_TASKS) queuedTasks.add(id);
       runSoon();
+    },
+    // The sync-from date moved earlier: download the extra jobs for every active client.
+    redownloadActiveClients() {
+      for (const c of store.activeClients()) queuedClients.add(c.clientId);
+      runSoon(500);
+    },
+    // A client was just activated: download its completed jobs on the next run.
+    activateClient(clientId) {
+      queuedClients.add(clientId);
+      runSoon(500);
     },
     async fullResync() {
       store.setState('cursor', null);
@@ -268,6 +455,14 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, log =
     },
     // Used when someone opens a photo we haven't downloaded yet (e.g. admin previewing a
     // client nobody is linked to): one single-task fetch for fresh links, then download.
+    // Full-resolution original of one photo, straight from AroFlo (not cached). Used for
+    // "Download" when the cached copy has been shrunk.
+    async fetchOriginalPhoto(taskId, docId) {
+      const task = await fetchTask(taskId);
+      const doc = (task?.documentsandphotos || []).find((d) => d.documentid === docId);
+      if (!doc?.url) return null;
+      return aroflo.fetchDocument(doc.url);
+    },
     async fetchPhotosNow(taskId) {
       await syncTask(taskId, { downloadAll: true });
     },
@@ -281,6 +476,7 @@ function mapTask(t) {
     clientId: t.client.clientid,
     clientName: t.client.clientname || '',
     jobNumber: String(t.jobnumber || ''),
+    custOn: String(t.custon || '').trim(),
     taskName: t.taskname || '',
     location: t.tasklocation?.locationname || t.location?.locationname || '',
     status: String(t.status).toLowerCase(),

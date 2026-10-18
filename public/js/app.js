@@ -34,7 +34,8 @@ const isAdmin = me.user.role === 'admin';
 
 if (isAdmin) {
   try {
-    state.clients = (await api('/api/admin/clients')).clients;
+    // Only active clients have jobs in the portal, so only they can be previewed.
+    state.clients = (await api('/api/admin/clients')).clients.filter((c) => c.active);
   } catch (err) {
     state.error = err.message;
   }
@@ -139,7 +140,7 @@ function searchPanel() {
     h('div', { class: 'toolbar' },
       h('label', { class: 'field search' }, h('span', {}, 'Keyword'),
         h('div', { class: 'input-icon' }, icon('search'),
-          h('input', { type: 'search', value: f.q, placeholder: 'Job number, task or location', oninput: (e) => update('q', e.target.value) }))),
+          h('input', { type: 'search', value: f.q, placeholder: 'Cust ON, task or location', oninput: (e) => update('q', e.target.value) }))),
       h('label', { class: 'field period' }, h('span', {}, 'Completed'),
         h('select', { onchange: (e) => update('period', e.target.value) },
           PERIODS.map(([value, label]) => h('option', { value, selected: value === f.period }, label)))),
@@ -166,7 +167,7 @@ function filteredJobs() {
     if (min && (!done || done < min)) return false;
     if (max && (!done || done > max)) return false;
     if (!needle) return true;
-    return [j.jobNumber, j.taskName, j.location, j.clientName].some((v) => String(v || '').toLowerCase().includes(needle));
+    return [j.custOn, j.taskName, j.location, j.clientName].some((v) => String(v || '').toLowerCase().includes(needle));
   });
 }
 
@@ -181,7 +182,7 @@ function columns() {
   const multi = state.jobs.some((j) => j.clientName);
   return [
     ['completed', 'Completed', 'col-date'],
-    ['jobNumber', 'Job #', 'col-job'],
+    ['custOn', 'Cust ON', 'col-job'],
     ['taskName', 'Task', 'col-task'],
     ['location', 'Location', 'col-site'],
     multi ? ['clientName', 'Company', 'col-company'] : null,
@@ -191,11 +192,8 @@ function columns() {
 function sortedJobs(rows) {
   const { key, dir } = state.sort;
   const mult = dir === 'asc' ? 1 : -1;
-  const numeric = key === 'jobNumber';
   return [...rows].sort((a, b) => {
-    const cmp = numeric
-      ? (Number(a[key]) || 0) - (Number(b[key]) || 0)
-      : String(a[key] || '').localeCompare(String(b[key] || ''), undefined, { numeric: true, sensitivity: 'base' });
+    const cmp = String(a[key] || '').localeCompare(String(b[key] || ''), undefined, { numeric: true, sensitivity: 'base' });
     return cmp * mult || String(b.completed || '').localeCompare(String(a.completed || ''));
   });
 }
@@ -203,7 +201,7 @@ function sortedJobs(rows) {
 function sortBy(key) {
   state.sort = state.sort.key === key
     ? { key, dir: state.sort.dir === 'asc' ? 'desc' : 'asc' }
-    : { key, dir: ['completed', 'jobNumber'].includes(key) ? 'desc' : 'asc' };
+    : { key, dir: ['completed', 'custOn'].includes(key) ? 'desc' : 'asc' };
   state.page = 1;
   fillTable();
 }
@@ -249,8 +247,11 @@ function jobRow(j, cols) {
   const href = `#/job/${encodeURIComponent(j.taskId)}`;
   const cell = {
     completed: () => fmtDate(j.completed),
-    jobNumber: () => h('a', { class: 'job-link', href }, j.jobNumber || 'Job'),
-    taskName: () => h('span', { class: 'cell-text', title: j.taskName }, j.taskName || `Job ${j.jobNumber}`),
+    custOn: () => (j.custOn ? h('a', { class: 'job-link', href }, j.custOn) : ''),
+    // Without a Cust ON the task name carries the link, so every row stays reachable by keyboard.
+    taskName: () => (j.custOn
+      ? h('span', { class: 'cell-text', title: j.taskName }, j.taskName || 'Job')
+      : h('a', { class: 'job-link cell-text', href, title: j.taskName }, j.taskName || 'Job')),
     location: () => h('span', { class: 'cell-text', title: j.location }, j.location || ''),
     clientName: () => h('span', { class: 'cell-text', title: j.clientName }, j.clientName || ''),
   };
@@ -259,6 +260,9 @@ function jobRow(j, cols) {
 }
 
 // ---------- Job record ----------
+// How a job is referred to: its customer order number, the reference clients know it by.
+const jobRef = (job) => (job.custOn ? `Cust ON ${job.custOn}` : 'Job');
+
 async function showJob(taskId) {
   if (currentJob?.taskId === taskId) return renderJob(currentJob);
   const bar = pageBar({ title: 'Loading job…', crumb: { href: '#', label: 'Completed Jobs' } });
@@ -274,14 +278,14 @@ async function showJob(taskId) {
 }
 
 function renderJob(job) {
-  document.title = `Job ${job.jobNumber} · TTS Built Client Portal`;
+  document.title = `${jobRef(job)} · TTS Built Client Portal`;
   const printed = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
   const showCompany = !isAdmin && state.clients.length > 1 && job.clientName;
   const detail = (label, value) => (value ? h('div', {}, h('dt', {}, label), h('dd', {}, value)) : null);
   mount(view,
     pageBar({
-      title: job.taskName || `Job ${job.jobNumber}`,
-      crumb: { href: '#', label: 'Completed Jobs', current: `Job ${job.jobNumber}` },
+      title: job.taskName || jobRef(job),
+      crumb: { href: '#', label: 'Completed Jobs', current: jobRef(job) },
       actions: h('button', { class: 'btn primary', type: 'button', onclick: (e) => printRecord(e.currentTarget) }, icon('print'), 'Print / Save PDF'),
     }),
     h('main', { class: 'page' },
@@ -291,8 +295,8 @@ function renderJob(job) {
       h('section', { class: 'panel', 'aria-labelledby': 'details-title' },
         h('div', { class: 'panel-head' }, h('h2', { id: 'details-title' }, 'Job details')),
         // Company is already in the header; list it here only for users linked to several.
-        h('dl', { class: `detail-grid${showCompany ? ' five' : ''}` },
-          detail('Job #', h('span', { class: 'num' }, job.jobNumber)),
+        h('dl', { class: `detail-grid${showCompany ? ' five' : ''}${job.custOn ? '' : ' no-ref'}` },
+          job.custOn ? detail('Cust ON', h('span', { class: 'num' }, job.custOn)) : null,
           detail('Task', job.taskName),
           detail('Location', job.location),
           detail('Completed', h('span', { class: 'num' }, fmtDateTime(job.completed))),
@@ -370,12 +374,12 @@ function openViewer(job, index) {
     index = (i + job.photos.length) % job.photos.length;
     const p = job.photos[index];
     img.src = photoUrl(job, p);
-    img.alt = p.comment || `Photo ${index + 1} of job ${job.jobNumber}`;
+    img.alt = p.comment || `Photo ${index + 1} of ${jobRef(job)}`;
     download.href = photoUrl(job, p, true);
     counter.textContent = `Photo ${index + 1} of ${job.photos.length}`;
     mount(caption, p.comment || `Photo ${index + 1}`, h('span', {}, fmtDateTime(p.uploaded)));
   };
-  const box = h('div', { class: 'viewer', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Photos for job ${job.jobNumber}` },
+  const box = h('div', { class: 'viewer', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Photos for ${jobRef(job)}` },
     h('div', { class: 'viewer-top' }, counter, h('span', { class: 'spacer' }), download, closeBtn),
     h('div', { class: 'viewer-stage', onclick: (e) => { if (e.target === e.currentTarget) close(); } },
       img,

@@ -11,6 +11,8 @@ export const DEFAULT_SETTINGS = {
   portalName: 'Client Portal',
   // Safety-net check for missed webhooks. Webhooks do most of the work.
   syncIntervalMinutes: 60,
+  // Only jobs completed on or after this date are synced (older ones are never requested).
+  syncFrom: '2026-01-01',
 };
 
 export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
@@ -54,7 +56,8 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
     -- from these tables, so page views never call AroFlo.
     CREATE TABLE IF NOT EXISTS clients (
       client_id   TEXT PRIMARY KEY,
-      client_name TEXT NOT NULL
+      client_name TEXT NOT NULL,
+      active      INTEGER NOT NULL DEFAULT 0   -- 1 = read from AroFlo and shown in the portal
     );
 
     CREATE TABLE IF NOT EXISTS jobs (
@@ -62,6 +65,7 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
       client_id   TEXT NOT NULL,
       client_name TEXT NOT NULL DEFAULT '',
       job_number  TEXT NOT NULL DEFAULT '',
+      cust_on     TEXT NOT NULL DEFAULT '',   -- customer order number; the reference clients know the job by
       task_name   TEXT NOT NULL DEFAULT '',
       location    TEXT NOT NULL DEFAULT '',
       status      TEXT NOT NULL,              -- 'completed' or 'archived'
@@ -89,6 +93,7 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
       filter       TEXT NOT NULL DEFAULT '',
       file         TEXT,                      -- file name in data/files once downloaded
       content_type TEXT,
+      compressed   INTEGER NOT NULL DEFAULT 0,   -- 1 = stored shrunk (see images.js)
       PRIMARY KEY (task_id, doc_id)
     );
 
@@ -97,6 +102,22 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
       value TEXT NOT NULL
     );
   `);
+
+  // Older databases: add the "active" flag to clients. Clients already linked to a
+  // portal user start active so existing logins keep working.
+  if (!db.prepare('PRAGMA table_info(job_photos)').all().some((c) => c.name === 'compressed')) {
+    db.exec('ALTER TABLE job_photos ADD COLUMN compressed INTEGER NOT NULL DEFAULT 0');
+  }
+  // Older databases: add the customer order number, and clear the sync cursor so the next
+  // run re-downloads the active clients' jobs once to fill it in.
+  if (!db.prepare('PRAGMA table_info(jobs)').all().some((c) => c.name === 'cust_on')) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN cust_on TEXT NOT NULL DEFAULT '';
+             DELETE FROM sync_state WHERE key = 'cursor';`);
+  }
+  if (!db.prepare('PRAGMA table_info(clients)').all().some((c) => c.name === 'active')) {
+    db.exec(`ALTER TABLE clients ADD COLUMN active INTEGER NOT NULL DEFAULT 0;
+             UPDATE clients SET active = 1 WHERE client_id IN (SELECT client_id FROM user_clients);`);
+  }
 
   const q = {
     countUsers: db.prepare('SELECT COUNT(*) AS n FROM users'),

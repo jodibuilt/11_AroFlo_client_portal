@@ -6,7 +6,8 @@ import path from 'node:path';
 const CLIENT_VISIBLE = new Set(['show client', 'show all']);
 
 export function createPortalData({ store, sync }) {
-  const statusAllowed = (status, settings) => status === 'completed' || (settings.includeArchived && status === 'archived');
+  // Every stored job has a completed date; archived ones are shown only when the setting allows.
+  const statusAllowed = (status, settings) => status !== 'archived' || settings.includeArchived;
 
   // Returns the stored job only if it belongs to one of `clientIds` (null = any client)
   // and has a status the portal shows.
@@ -33,7 +34,7 @@ export function createPortalData({ store, sync }) {
       if (!job) return null;
       return {
         taskId: job.task_id,
-        jobNumber: job.job_number,
+        custOn: job.cust_on,
         taskName: job.task_name,
         location: job.location,
         clientName: job.client_name,
@@ -58,7 +59,7 @@ export function createPortalData({ store, sync }) {
         photo = store.getPhoto(taskId, docId);
         if (!photo?.file) return null;
       }
-      return { contentType: photo.content_type, name: photo.name, filePath: path.join(store.fileDir, photo.file) };
+      return { contentType: photo.content_type, name: photo.name, compressed: Boolean(photo.compressed), filePath: path.join(store.fileDir, photo.file) };
     },
   };
 }

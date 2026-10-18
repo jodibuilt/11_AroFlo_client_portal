@@ -24,8 +24,8 @@ set in the terminal; on Azure, App Settings are used instead.
 
 ## What clients see
 
-- **Jobs:** AroFlo tasks for their client with status *Completed* or *Archived* (AroFlo moves jobs to Archived
-  after invoicing; can be turned off in Portal Settings), sorted by completed date, newest first.
+- **Jobs:** AroFlo tasks for their client that have a **completed date** (from the sync-from date, default 1 Jan 2026), in any
+  status or substatus: Completed, Ready for Invoicing, To Be Reviewed, Archived (archived can be turned off in Portal Settings). Sorted by completed date, newest first.
   The list shows completed date, job #, task name and location.
 - **Per job:** a Notes tab (newest first) and a Photos tab (oldest first, so before → after).
 - **Visibility:** by default only notes/photos AroFlo marks *Show Client* or *Show All*. Change in
@@ -38,7 +38,14 @@ set in the terminal; on Azure, App Settings are used instead.
 The portal keeps its **own copy** of completed jobs, notes and photos (SQLite + `data/files`). Clients and admins
 only read that copy, so viewing jobs makes **no AroFlo API calls**.
 
-- **First run:** one paged download of every Completed/Archived task with notes and photos (~10 calls for ~200 jobs).
+- **First run:** one paged download of each active client's tasks with a completed date with notes and photos (~10 calls for ~200 jobs).
+- **Active clients only:** in **Control Panel → Clients**, switch on the AroFlo clients that use the portal
+  (linking a client to a user switches it on automatically). Only active clients are read from AroFlo:
+  activating one downloads just its completed jobs; deactivating removes them. Webhooks for inactive clients
+  are ignored without any API call (the payload carries the client name).
+- **2026 onwards:** only jobs completed on or after the *Sync jobs completed on or after* date in Portal settings
+  (default 1 Jan 2026) are requested from AroFlo or kept. Moving it later removes older jobs (no API calls);
+  moving it earlier downloads the extra jobs for active clients.
 - **Webhooks (main trigger):** AroFlo Event Messages (Task Status – Completed / Archived, Task – Add Task Note →
   Webhook) pointing at the URL in **Control Panel → AroFlo sync**. AroFlo's payload includes the task id
   (`payload.api_related_ids.taskid`), so just that task is fetched, by id (separate 20,000/day allowance, not the
@@ -50,8 +57,11 @@ only read that copy, so viewing jobs makes **no AroFlo API calls**.
 - **Daily:** client list (1 call) and a re-check of jobs completed in the last 7 days (a few calls), which catches
   any completion whose webhook was missed and photos added just after completion.
 - **Restarts** don't re-download anything; a full download happens only on first run or *Full resync*.
-- **Photos** are downloaded once, for clients linked to a portal user, and kept on disk.
-  Linking a client to a user downloads its photos within a few minutes.
+- **Photos** download on demand, the first time someone opens a job (1 single-job lookup), then stay cached in
+  `data/files`. Photos of jobs completed more than 30 days ago are stored shrunk (max 1600px, JPEG ~72%, typically
+  ~10x smaller, EXIF rotation applied); a daily background pass shrinks cached photos as their jobs age. *Download*
+  of a shrunk photo fetches the full-resolution original from AroFlo. The cache is capped (least recently viewed
+  photos are evicted first). Settings: `PHOTO_CACHE_MB` (default 2000), `PHOTO_COMPRESS_AFTER_DAYS` (default 30).
 - **Control Panel → AroFlo Sync** shows status, counts and API usage, with *Sync now* and *Full resync* buttons.
 
 ## Deploy to Azure App Service

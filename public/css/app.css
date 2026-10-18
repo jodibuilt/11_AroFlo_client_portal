@@ -93,8 +93,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- Shell ---------- */
 .topbar {
   position: sticky; top: 0; z-index: 30;
-  display: flex; align-items: center; gap: 28px;
-  height: 56px; padding: 0 24px;
+  display: flex; align-items: center; gap: clamp(12px, 2.4vw, 28px);
+  height: 56px; padding: 0 clamp(14px, 2.5vw, 24px);
   background: var(--shell); color: var(--shell-text);
   /* Accent line: TTS orange flowing into TTS blue */
   border-bottom: 3px solid transparent;
@@ -102,13 +102,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .brand { display: flex; align-items: center; gap: 14px; color: var(--shell-text); text-decoration: none; flex: none; }
 .brand img { height: 22px; width: auto; display: block; }
-.org { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding-left: 18px; border-left: 1px solid var(--shell-line); line-height: 1.25; }
+/* As the window narrows the company name gives way first (ellipsis), then labels turn into icons. */
+.org { flex: 0 1 auto; display: flex; flex-direction: column; justify-content: center; min-width: 0; padding-left: clamp(12px, 1.6vw, 18px); border-left: 1px solid var(--shell-line); line-height: 1.25; }
 .org-caption { color: var(--shell-muted); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
-.org-name { color: #fff; font-size: var(--text-md); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32ch; }
-.org select { height: 30px; margin-top: 2px; padding: 0 30px 0 10px; max-width: 34ch; background-color: var(--shell-2); color: #fff; border-color: var(--shell-line); font-weight: 650; }
+.org-name { display: block; min-width: 0; color: #fff; font-size: var(--text-md); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
+.org select { height: 30px; margin-top: 2px; padding: 0 30px 0 10px; width: auto; max-width: min(34ch, 100%); min-width: 0; text-overflow: ellipsis; background-color: var(--shell-2); color: #fff; border-color: var(--shell-line); font-weight: 650; }
 .org select:hover { border-color: #5a5b58; }
 .org select option { background: #fff; color: var(--ink); }
-.topnav { display: flex; align-self: stretch; gap: 4px; flex: 1; min-width: 0; }
+.topnav { display: flex; align-self: stretch; gap: 4px; flex: 1 0 auto; }
 .topnav a {
   display: flex; align-items: center; gap: 8px; padding: 0 14px; margin-bottom: 0;
   color: var(--shell-muted); font-weight: 600; text-decoration: none;
@@ -119,9 +120,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topnav a[aria-current="page"] { color: #fff; border-bottom-color: #fff; }
 .topnav a:focus-visible { box-shadow: inset var(--focus); border-radius: 0; }
 .usermenu { display: flex; align-items: center; gap: 16px; flex: none; }
-.usermenu .who { text-align: right; line-height: 1.3; }
-.usermenu .who b { display: block; font-weight: 600; font-size: var(--text-sm); color: var(--shell-text); }
-.usermenu .who span { display: block; font-size: var(--text-sm); color: var(--shell-muted); }
+.usermenu .who { text-align: right; line-height: 1.3; max-width: 26ch; min-width: 0; }
+.usermenu .who b { display: block; font-weight: 600; font-size: var(--text-sm); color: var(--shell-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.usermenu .who span { display: block; font-size: var(--text-sm); color: var(--shell-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn-shell {
   display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px;
   background: transparent; color: var(--shell-text); border: 1px solid var(--shell-line); border-radius: var(--radius-sm);
@@ -135,7 +136,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .notice .icon { width: 16px; height: 16px; }
 
 /* ---------- Page ---------- */
-.page { max-width: 1400px; margin: 0 auto; padding: 20px 24px 48px; }
+.page { max-width: 1400px; margin: 0 auto; padding: 20px clamp(16px, 2.5vw, 24px) 48px; }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .panel + .panel { margin-top: 20px; }
@@ -339,6 +340,29 @@ fieldset.field legend { padding: 0; margin-bottom: 8px; font-weight: 600; color:
 .signin-foot { padding: 20px; text-align: center; color: var(--ink-3); font-size: var(--text-sm); }
 
 /* ---------- Responsive ---------- */
+/* Header steps down as space runs out: user details go, then nav and sign-out labels
+   become icons (labels stay for screen readers, titles give a tooltip). */
+@media (max-width: 1100px) {
+  .usermenu .who { display: none; }
+}
+@media (max-width: 900px) {
+  .org-caption { display: none; }
+  .topnav a { padding: 0 10px; }
+  .topnav a .label, .btn-shell .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .btn-shell { padding: 0 10px; }
+}
+@media (max-width: 480px) {
+  .brand img { height: 18px; }
+  .topnav a { padding: 0 8px; }
+}
+/* Mid widths: tighter grid cells so the task column keeps room. */
+@media (min-width: 721px) and (max-width: 1100px) {
+  .grid td, .grid th .sort { padding-left: 10px; padding-right: 10px; }
+  .grid .col-date { width: 112px; }
+  .grid .col-job { width: 112px; }
+  .grid .col-site { width: 26%; }
+  .grid .col-company { width: 16%; }
+}
 @media (max-width: 960px) {
   .record-body { grid-template-columns: 1fr; }
   .admin-layout { grid-template-columns: 1fr; }
@@ -347,17 +371,9 @@ fieldset.field legend { padding: 0; margin-bottom: 8px; font-weight: 600; color:
 }
 @media (max-width: 720px) {
   :root { font-size: 15px; }
-  .topbar { gap: 12px; padding: 0 14px; height: 56px; }
-  .org-caption, .usermenu .who { display: none; }
-  .topnav a .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .org { padding-left: 12px; }
-  .org-name { font-size: var(--text-base); max-width: 13ch; }
-  .btn-shell { padding: 0 10px; }
-  .btn-shell .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .org select { max-width: 40vw; }
-  .topnav a { padding: 0 10px; }
+  .org-name { font-size: var(--text-base); }
   .notice { padding: 10px 16px; }
-  .page { padding: 20px 16px 40px; }
+  .page { padding-bottom: 40px; }
   .toolbar { padding: 14px 16px; }
   .toolbar .search, .toolbar .period, .toolbar .range { flex: 1 1 100%; }
   .toolbar .range .field { flex: 1; width: auto; }
@@ -443,7 +459,7 @@ table.grid { table-layout: fixed; }
 .grid tbody tr.row:nth-child(even) td { background: var(--row-alt); }
 .grid tr.row:hover td { background: var(--row-hover); }
 .grid .col-date { width: 132px; }
-.grid .col-job { width: 96px; }
+.grid .col-job { width: 130px; }
 .grid .col-site { width: 30%; color: var(--ink-2); }
 .grid .col-company { width: 18%; color: var(--ink-2); }
 .grid .col-task { color: var(--ink); }
@@ -460,8 +476,9 @@ table.grid { table-layout: fixed; }
 
 /* ---------- Page bar: slim full-width title strip under the shell ---------- */
 .pagebar { background: var(--panel); border-bottom: 1px solid var(--line); }
-.pagebar-inner { max-width: 1400px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; min-height: 60px; }
-.pagebar .titles { flex: 1; min-width: 200px; }
+.pagebar-inner { max-width: 1400px; margin: 0 auto; padding: 12px clamp(16px, 2.5vw, 24px); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; min-height: 60px; }
+.pagebar .titles { flex: 1; min-width: min(200px, 100%); }
+.pagebar h1 { overflow-wrap: anywhere; }
 .pagebar .crumbs { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ink-3); margin-bottom: 2px; }
 .pagebar .crumbs a { color: var(--link); text-decoration: none; font-weight: 500; }
 .pagebar .crumbs a:hover { text-decoration: underline; }
@@ -479,6 +496,9 @@ table.grid { table-layout: fixed; }
 /* Job details: label/value pairs in an even grid */
 .detail-grid { display: grid; grid-template-columns: 120px minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1.4fr); gap: 0; margin: 0; }
 .detail-grid.five { grid-template-columns: 120px minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1.4fr); }
+/* No Cust ON on this job: drop the narrow reference column. */
+.detail-grid.no-ref { grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1.4fr); }
+.detail-grid.five.no-ref { grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1.4fr); }
 .detail-grid > div { padding: 12px 16px; border-right: 1px solid var(--line); min-width: 0; }
 .detail-grid > div:last-child { border-right: none; }
 .detail-grid dt { font-size: var(--text-sm); color: var(--ink-3); margin-bottom: 2px; }
@@ -486,11 +506,11 @@ table.grid { table-layout: fixed; }
 .page > .panel + .record-body, .page > .panel + .record-empty { margin-top: 16px; }
 .record-body { gap: 16px; margin-top: 16px; }
 @media (max-width: 960px) {
-  .detail-grid, .detail-grid.five { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-grid, .detail-grid.five, .detail-grid.no-ref, .detail-grid.five.no-ref { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .detail-grid > div { border-right: none; border-bottom: 1px solid var(--line); }
 }
 @media print {
-  .detail-grid, .detail-grid.five { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-grid, .detail-grid.five, .detail-grid.no-ref, .detail-grid.five.no-ref { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .detail-grid > div { padding: 6px 0; border: none; }
 }
 
@@ -498,3 +518,15 @@ table.grid { table-layout: fixed; }
 .data thead th { background: #eef0f3; border-bottom-color: var(--line-strong); }
 .data tbody tr:nth-child(even) td { background: var(--row-alt); }
 .data tbody tr:hover td { background: var(--row-hover); }
+
+/* On/off switch (Control Panel → Clients) */
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-size: var(--text-sm); color: var(--ink-2); }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch-track { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--line-strong); transition: background .15s ease; flex: none; }
+.switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(27, 31, 36, .25); transition: transform .15s ease; }
+.switch input:checked + .switch-track { background: var(--ok); }
+.switch input:checked + .switch-track::after { transform: translateX(16px); }
+.switch input:focus-visible + .switch-track { box-shadow: var(--focus); }
+.switch input:disabled + .switch-track { opacity: .5; }
+.switch input:checked ~ span:last-child { color: var(--ok); font-weight: 600; }
+.compact-select { width: auto; min-width: 150px; }

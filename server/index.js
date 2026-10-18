@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import { openDatabase, DEFAULT_SETTINGS } from './db.js';
+import { prepareLocalCopy, snapshotTo } from './dbfile.js';
 import { createAroFloClient, AroFloError } from './aroflo.js';
 import { createMockClient } from './mock.js';
 import { createPortalData } from './data.js';
@@ -42,8 +43,10 @@ const PORT = Number(env.PORT) || 3000;
 const DATA_DIR = path.resolve(ROOT, env.DATA_DIR || (ON_AZURE ? '/home/data' : 'data'));
 const COOKIE_SECURE = (env.COOKIE_SECURE ?? (ON_AZURE ? 'true' : 'false')) === 'true';
 const TRUST_PROXY = env.TRUST_PROXY ?? (ON_AZURE ? '1' : '');
-// /home on App Service is network storage, where SQLite's WAL mode isn't safe.
-const SQLITE_JOURNAL_MODE = env.SQLITE_JOURNAL_MODE || (ON_AZURE ? 'DELETE' : 'WAL');
+// On Azure the database runs from local disk (see dbfile.js) and is snapshotted to
+// DATA_DIR, because SQLite locks are unreliable on the /home network share.
+const LOCAL_DB_DIR = env.LOCAL_DB_DIR || (ON_AZURE ? '/tmp/portal-db' : '');
+const SQLITE_JOURNAL_MODE = env.SQLITE_JOURNAL_MODE || 'WAL';
 const demoMode = env.DEMO_MODE === 'true';
 // On a public server, creating the first admin needs this code so nobody else can claim it.
 const SETUP_TOKEN = env.SETUP_TOKEN || '';
@@ -64,7 +67,23 @@ if (!HAS_AROFLO_LOGIN) {
   console.warn('AroFlo credentials are not set, so syncing is off (no AroFlo API calls). The portal still serves the jobs it already has.');
 }
 
-const db = openDatabase(DATA_DIR, { journalMode: SQLITE_JOURNAL_MODE });
+const db = openDatabase(LOCAL_DB_DIR ? prepareLocalCopy(DATA_DIR, LOCAL_DB_DIR) : DATA_DIR, { journalMode: SQLITE_JOURNAL_MODE });
+
+// Save the local database back to DATA_DIR whenever it has changed (checked every 30s),
+// and on shutdown.
+let savedChanges = -1;
+function saveDatabase() {
+  if (!LOCAL_DB_DIR) return;
+  const changes = db.handle.prepare('SELECT total_changes() AS n').get().n;
+  if (changes === savedChanges) return;
+  try {
+    snapshotTo(db.handle, DATA_DIR);
+    savedChanges = changes;
+  } catch (err) {
+    console.error(`Saving the database to ${DATA_DIR} failed: ${err.message}`);
+  }
+}
+if (LOCAL_DB_DIR) setInterval(saveDatabase, 30_000).unref();
 const store = createStore(db, path.join(DATA_DIR, 'files'));
 
 // If the AroFlo login changed (e.g. .env or Azure App Settings now point at another
@@ -86,6 +105,11 @@ const sync = createSync({
   aroflo,
   store,
   getIntervalMinutes: () => Number(env.SYNC_INTERVAL_MINUTES) || db.getSettings().syncIntervalMinutes,
+  getSyncFrom: () => db.getSettings().syncFrom,
+  // Photos are cached on disk up to this size (MB); on Azure the plan's storage is shared.
+  photoCacheBytes: (Number(env.PHOTO_CACHE_MB) || 2000) * 1024 * 1024,
+  // Photos of jobs completed more than this many days ago are stored shrunk.
+  compressAfterDays: Number(env.PHOTO_COMPRESS_AFTER_DAYS) || 30,
 });
 const portal = createPortalData({ store, sync });
 setInterval(() => db.purgeSessions(), 3600_000).unref();
@@ -113,7 +137,9 @@ app.get('/healthz', (_req, res) => {
 // call triggers a check of what changed in AroFlo. Always answers quickly.
 app.post('/webhooks/aroflo/:secret', express.raw({ type: () => true, limit: '256kb' }), (req, res) => {
   if (!sameSecret(req.params.secret, WEBHOOK_SECRET)) return res.status(404).end();
-  sync.notify(findTaskIds(req.body, req.query));
+  const text = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
+  const clientName = text.match(/"organisationname"\s*:\s*"([^"]*)"/i)?.[1];
+  sync.notify(findTaskIds(req.body, req.query), { clientName });
   res.status(202).json({ ok: true });
 });
 
@@ -243,6 +269,19 @@ app.get('/api/jobs/:taskId', requireUser, (req, res) => {
 app.get('/api/jobs/:taskId/files/:docId', requireUser, ah(async (req, res) => {
   const file = await portal.getFile(req.params.taskId, req.params.docId, allowedClientIds(req), db.getSettings());
   if (!file) return res.status(404).json({ error: 'File not found.' });
+  // "Download" of a shrunk photo gives the full-resolution original from AroFlo.
+  if (req.query.download === '1' && file.compressed) {
+    const original = await sync.fetchOriginalPhoto(req.params.taskId, req.params.docId).catch(() => null);
+    if (original) {
+      res.set({
+        'Content-Type': original.contentType,
+        'Content-Disposition': `attachment; filename="${file.name.replace(/[^\w.\- ]+/g, '_')}"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+        'Cache-Control': 'private, no-store',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+      });
+      return res.send(original.body);
+    }
+  }
   const inline = req.query.download !== '1' && /^(image\/|application\/pdf)/i.test(file.contentType);
   const safeName = file.name.replace(/[^\w.\- ]+/g, '_');
   res.set({
@@ -252,6 +291,9 @@ app.get('/api/jobs/:taskId/files/:docId', requireUser, ah(async (req, res) => {
     // Uploaded files are untrusted: never let one run script on our origin.
     'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
   });
+  // Mark the photo as recently viewed so the cache keeps it.
+  const now = new Date();
+  fs.utimes(file.filePath, now, now, () => {});
   res.sendFile(file.filePath);
 }));
 
@@ -281,6 +323,19 @@ admin.get('/clients', ah(async (req, res) => {
   res.json({ clients: portal.listClients() });
 }));
 
+// Turns a client on or off for the portal. Only active clients are read from AroFlo:
+// activating downloads that client's completed jobs; deactivating removes them here.
+admin.put('/clients/:clientId', (req, res) => {
+  const client = store.getClient(req.params.clientId);
+  if (!client) return res.status(404).json({ error: 'Client not found.' });
+  const active = req.body?.active === true;
+  if (active === client.active) return res.json({ client: { ...client, active } });
+  store.setClientActive(client.clientId, client.clientName, active);
+  if (active) sync.activateClient(client.clientId);
+  else store.removeJobsForClient(client.clientId);
+  res.json({ client: { ...client, active } });
+});
+
 admin.get('/users', (_req, res) => res.json({ users: db.listUsers() }));
 
 admin.post('/users', ah(async (req, res) => {
@@ -295,7 +350,7 @@ admin.post('/users', ah(async (req, res) => {
     passwordHash: hashPassword(input.password),
     clients: input.role === 'client' ? await normaliseClients(input.clients) : [],
   });
-  sync.runSoon(); // fetch photos for any newly linked client
+  activateLinkedClients(id);
   res.json({ user: db.listUsers().find((u) => u.id === id) });
 }));
 
@@ -322,7 +377,7 @@ admin.put('/users/:id', ah(async (req, res) => {
     db.setPassword(id, hashPassword(input.password));
     if (id !== req.user.id) db.deleteUserSessions(id);
   }
-  sync.runSoon(); // fetch photos for any newly linked client
+  activateLinkedClients(id);
   res.json({ user: db.listUsers().find((u) => u.id === id) });
 }));
 
@@ -347,9 +402,14 @@ admin.put('/settings', (req, res) => {
     fileVisibility: s.fileVisibility === 'all' ? 'all' : 'client',
     includeArchived: s.includeArchived !== false,
     syncIntervalMinutes: SYNC_INTERVAL_CHOICES.includes(Number(s.syncIntervalMinutes)) ? Number(s.syncIntervalMinutes) : DEFAULT_SETTINGS.syncIntervalMinutes,
+    syncFrom: /^\d{4}-\d{2}-\d{2}$/.test(String(s.syncFrom || '')) ? s.syncFrom : DEFAULT_SETTINGS.syncFrom,
     portalName: String(s.portalName || DEFAULT_SETTINGS.portalName).trim().slice(0, 60) || DEFAULT_SETTINGS.portalName,
   };
+  const previousFrom = db.getSettings().syncFrom;
   db.saveSettings(next);
+  // Later cutoff: drop older jobs (no API calls). Earlier: fetch the extra jobs for active clients.
+  if (next.syncFrom > previousFrom) store.removeJobsCompletedBefore(next.syncFrom);
+  else if (next.syncFrom < previousFrom) sync.redownloadActiveClients();
   res.json({ settings: db.getSettings() });
 });
 
@@ -416,6 +476,15 @@ function sameSecret(a, b) {
   return crypto.timingSafeEqual(hash(a), hash(b));
 }
 
+// Clients linked to a user must be active so their jobs are synced.
+function activateLinkedClients(userId) {
+  for (const c of db.clientsForUser(userId)) {
+    if (store.isClientActive(c.clientId)) continue;
+    store.setClientActive(c.clientId, c.clientName, true);
+    sync.activateClient(c.clientId);
+  }
+}
+
 function wouldRemoveLastAdmin(id) {
   return !db.listUsers().some((u) => u.role === 'admin' && u.active && u.id !== id);
 }
@@ -429,6 +498,7 @@ const server = app.listen(PORT, () => {
 // App Service sends SIGTERM on restart/redeploy: finish in-flight requests, then close the database.
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.once(signal, () => {
+    saveDatabase();
     server.close(() => {
       db.close();
       process.exit(0);

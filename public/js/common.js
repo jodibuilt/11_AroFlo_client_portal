@@ -72,8 +72,8 @@ export function renderTopbar({ user, mode, active, org }) {
   // Clients only have the jobs page, so they get no nav at all. Admins switch between
   // previewing the client view and the Control Panel.
   const nav = user.role === 'admin' ? [
-    h('a', { href: '/', 'aria-current': active === 'jobs' ? 'page' : null }, icon('eye'), h('span', { class: 'label' }, 'Client view')),
-    h('a', { href: '/admin', 'aria-current': active === 'admin' ? 'page' : null }, icon('cog'), h('span', { class: 'label' }, 'Control Panel')),
+    h('a', { href: '/', title: 'Client view', 'aria-current': active === 'jobs' ? 'page' : null }, icon('eye'), h('span', { class: 'label' }, 'Client view')),
+    h('a', { href: '/admin', title: 'Control Panel', 'aria-current': active === 'admin' ? 'page' : null }, icon('cog'), h('span', { class: 'label' }, 'Control Panel')),
   ] : [];
   const bar = h('header', { class: 'topbar' },
     h('a', { class: 'brand', href: '/', 'aria-label': 'TTS Built Client Portal, home' },
@@ -84,7 +84,7 @@ export function renderTopbar({ user, mode, active, org }) {
     h('nav', { class: 'topnav', 'aria-label': 'Main' }, nav),
     h('div', { class: 'usermenu' },
       h('div', { class: 'who' }, h('b', {}, user.name), h('span', {}, user.role === 'admin' ? 'TTS Built administrator' : user.email)),
-      h('button', { class: 'btn-shell', type: 'button', onclick: logout }, icon('signout', 'icon'), h('span', { class: 'label' }, 'Sign out')),
+      h('button', { class: 'btn-shell', type: 'button', title: 'Sign out', onclick: logout }, icon('signout', 'icon'), h('span', { class: 'label' }, 'Sign out')),
     ),
   );
   const parts = [bar];
