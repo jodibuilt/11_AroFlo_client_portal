@@ -43,12 +43,12 @@ if (isAdmin) {
   state.clients = me.clients;
 }
 const params = new URLSearchParams(location.search);
-state.clientId = state.clients.some((c) => c.clientId === params.get('client'))
+state.clientId = state.clients.some((c) => c.id === params.get('client'))
   ? params.get('client')
-  : isAdmin ? null : state.clients[0]?.clientId || null;
+  : isAdmin ? null : state.clients[0]?.id || null;
 
-const orgName = () => state.clients.find((c) => c.clientId === state.clientId)?.clientName || '';
-// Company in the header, like AroFlo. Clients only ever see their company name(s) as
+const orgName = () => state.clients.find((c) => c.id === state.clientId)?.clientName || '';
+// Company in the header, like a business name. Clients only ever see their company name(s) as
 // text; the switcher is an admin tool for previewing a client.
 const names = state.clients.map((c) => c.clientName).sort((a, b) => a.length - b.length);
 const orgLabel = names.length > 1 ? `${names[0]} + ${names.length - 1} more` : names[0];
@@ -74,7 +74,7 @@ async function showList() {
   if (!state.clientId || state.jobs) return;
   state.error = null;
   try {
-    state.jobs = (await api(isAdmin ? `/api/jobs?clientId=${encodeURIComponent(state.clientId)}` : '/api/jobs')).jobs;
+    state.jobs = (await api(isAdmin ? `/api/jobs?client=${encodeURIComponent(state.clientId)}` : '/api/jobs')).jobs;
   } catch (err) {
     state.error = err.message;
     state.jobs = [];
@@ -121,7 +121,7 @@ function renderList() {
 function companySwitcher() {
   return h('select', { 'aria-label': 'Preview client', onchange: (e) => setClient(e.target.value) },
     h('option', { value: '' }, 'Preview a client…'),
-    state.clients.map((c) => h('option', { value: c.clientId, selected: c.clientId === state.clientId }, c.clientName)));
+    state.clients.map((c) => h('option', { value: c.id, selected: c.id === state.clientId }, c.clientName)));
 }
 
 function searchPanel() {
@@ -244,7 +244,7 @@ function fillTable() {
 }
 
 function jobRow(j, cols) {
-  const href = `#/job/${encodeURIComponent(j.taskId)}`;
+  const href = `#/job/${encodeURIComponent(j.id)}`;
   const cell = {
     completed: () => fmtDate(j.completed),
     custOn: () => (j.custOn ? h('a', { class: 'job-link', href }, j.custOn) : ''),
@@ -263,14 +263,15 @@ function jobRow(j, cols) {
 // How a job is referred to: its customer order number, the reference clients know it by.
 const jobRef = (job) => (job.custOn ? `Cust ON ${job.custOn}` : 'Job');
 
-async function showJob(taskId) {
-  if (currentJob?.taskId === taskId) return renderJob(currentJob);
+// `id` is the server's opaque, encrypted job reference.
+async function showJob(id) {
+  if (currentJob?.id === id) return renderJob(currentJob);
   const bar = pageBar({ title: 'Loading job…', crumb: { href: '#', label: 'Completed Jobs' } });
   mount(view, bar, h('main', { class: 'page' }, h('div', { class: 'panel' }, loading(4))));
   try {
-    const { job } = await api(`/api/jobs/${encodeURIComponent(taskId)}`);
+    const { job } = await api(`/api/jobs/${encodeURIComponent(id)}`);
     currentJob = job;
-    if (location.hash.startsWith(`#/job/${encodeURIComponent(taskId)}`)) renderJob(job);
+    if (location.hash.startsWith(`#/job/${encodeURIComponent(id)}`)) renderJob(job);
   } catch (err) {
     mount(view, pageBar({ title: 'Job not available', crumb: { href: '#', label: 'Completed Jobs' } }),
       h('main', { class: 'page' }, errorBox(err.message)));
@@ -334,14 +335,13 @@ function notesPanel(job) {
     job.notes.length
       ? h('ul', { class: 'notes' }, job.notes.map((n) => h('li', {},
         h('div', { class: 'note-meta' },
-          h('b', {}, n.author || 'TTS Built'),
           h('time', { datetime: n.posted || '' }, fmtDateTime(n.posted))),
         h('p', { class: 'note-text' }, n.text || '(empty note)'))))
       : null);
 }
 
-const photoUrl = (job, p, download) =>
-  `/api/jobs/${encodeURIComponent(job.taskId)}/files/${encodeURIComponent(p.id)}${download ? '?download=1' : ''}`;
+const photoUrl = (p, download) =>
+  `/api/photos/${encodeURIComponent(p.id)}${download ? '?download=1' : ''}`;
 
 function photosPanel(job) {
   // When every photo was uploaded at the same time, say it once in the heading rather
@@ -355,7 +355,7 @@ function photosPanel(job) {
     h('div', { class: 'photo-grid' }, job.photos.map((p, i) => {
       const caption = [p.comment ? h('b', {}, p.comment) : null, sharedTime ? null : h('span', {}, fmtDateTime(p.uploaded))].filter(Boolean);
       return h('button', { class: 'photo', type: 'button', onclick: () => openViewer(job, i), 'aria-label': `Open photo ${i + 1}${p.comment ? `: ${p.comment}` : ''}` },
-        h('img', { src: photoUrl(job, p), alt: '', loading: 'lazy', decoding: 'async' }),
+        h('img', { src: photoUrl(p), alt: '', loading: 'lazy', decoding: 'async' }),
         caption.length ? h('span', { class: 'cap' }, caption) : null);
     })));
 }
@@ -373,9 +373,9 @@ function openViewer(job, index) {
   const show = (i) => {
     index = (i + job.photos.length) % job.photos.length;
     const p = job.photos[index];
-    img.src = photoUrl(job, p);
+    img.src = photoUrl(p);
     img.alt = p.comment || `Photo ${index + 1} of ${jobRef(job)}`;
-    download.href = photoUrl(job, p, true);
+    download.href = photoUrl(p, true);
     counter.textContent = `Photo ${index + 1} of ${job.photos.length}`;
     mount(caption, p.comment || `Photo ${index + 1}`, h('span', {}, fmtDateTime(p.uploaded)));
   };

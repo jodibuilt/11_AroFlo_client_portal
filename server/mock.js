@@ -1,5 +1,7 @@
 // Demo data source with the same shape as the AroFlo API responses.
 // Used when DEMO_MODE=true so the portal can be tried without live credentials.
+// Queries pass the same read-only allowlist as the live client.
+import { checkQuery } from './aroflo.js';
 
 const CLIENTS = [
   'Darwin Harbour Apartments',
@@ -150,6 +152,7 @@ export function createMockClient() {
     mode: 'demo',
     stats,
     async get(params) {
+      checkQuery(params);
       const zone = params.find(([k]) => k === 'zone')[1].toLowerCase();
       const all = query(zone, params);
       const size = Number(params.find(([k]) => k === 'pageSize')?.[1]) || 500;
@@ -158,6 +161,7 @@ export function createMockClient() {
       return { [zone]: rows, currentpageresults: rows.length, maxpageresults: 500, pagenumber: page };
     },
     async getAll(zone, params) {
+      checkQuery([['zone', zone], ...params]);
       return query(zone.toLowerCase(), params);
     },
     async fetchDocument(url) {

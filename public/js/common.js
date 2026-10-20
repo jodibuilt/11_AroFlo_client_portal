@@ -1,5 +1,5 @@
 // Shared helpers for every page. All DOM is built with h(), which only ever sets
-// text via textContent, so data from AroFlo can't inject markup.
+// text via textContent, so job data can't inject markup.
 import { ICONS } from './icons.js';
 
 export async function api(path, { method = 'GET', body } = {}) {
@@ -66,7 +66,7 @@ export function icon(name, cls = 'icon') {
   return svg;
 }
 
-// `org` is the company the user is working in, shown in the header like AroFlo's
+// `org` is the company the user is working in, shown in the header like a
 // business name: a plain name, or an element (a company switcher) when there's a choice.
 export function renderTopbar({ user, mode, active, org }) {
   // Clients only have the jobs page, so they get no nav at all. Admins switch between
@@ -90,7 +90,7 @@ export function renderTopbar({ user, mode, active, org }) {
   const parts = [bar];
   if (mode === 'demo') {
     parts.push(h('div', { class: 'notice demo', role: 'status' }, icon('alert'),
-      'Demo mode: showing sample data, not live AroFlo jobs.'));
+      'Demo mode: showing sample data, not live job data.'));
   }
   return parts;
 }
@@ -110,7 +110,7 @@ async function logout() {
   location.href = '/login';
 }
 
-// Dates arrive as zone-less "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm:ss" in AroFlo's local time.
+// Dates arrive as zone-less "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm:ss" in the business's local time.
 // A trailing "Z" marks a UTC time (photo uploads); those are shown in the viewer's time zone.
 function parts(value) {
   if (/T\d{2}:\d{2}(:\d{2})?Z$/.test(String(value || ''))) {

@@ -115,6 +115,16 @@ if (-not $setupToken) {
 }
 $settings['SETUP_TOKEN'] = $setupToken
 
+# Key for the portal's encrypted URL ids and admin 2FA keys. Kept if it already exists:
+# changing it would break saved links and every admin's two-factor sign-in.
+$appSecret = Get-AzValue webapp config appsettings list --resource-group $ResourceGroup --name $AppName --query "[?name=='APP_SECRET'].value" -o tsv
+if (-not $appSecret) {
+  $bytes = New-Object byte[] 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  $appSecret = [Convert]::ToBase64String($bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=')
+}
+$settings['APP_SECRET'] = $appSecret
+
 $tmp = [System.IO.Path]::GetTempFileName()
 try {
   $list = foreach ($k in $settings.Keys) { [pscustomobject]@{ name = $k; value = $settings[$k]; slotSetting = $false } }

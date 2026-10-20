@@ -13,8 +13,9 @@ npm install
 npm start          # http://localhost:3000
 ```
 
-On first run, open `/login` to create the admin account. Then go to **Control Panel → Users → New User**,
-pick the AroFlo client(s) the user belongs to, and send them the generated password.
+On first run, open `/login` to create the admin account and set up two-factor sign-in with an authenticator app.
+Then go to **Control Panel → Users → New User**, pick the AroFlo client(s) the user belongs to, and send them
+the generated password.
 
 ## Configuration (`.env`)
 
@@ -32,6 +33,46 @@ set in the terminal; on Azure, App Settings are used instead.
   **Control Panel → Portal Settings**. Non-photo documents (PDFs etc.) are never shown.
 - **Access control:** every job, note and photo request is checked on the server against the user's linked
   clients. Photos are served through the portal, so AroFlo's links are never exposed.
+
+## Security
+
+- **Read-only AroFlo access.** The portal only ever *reads* from AroFlo. Every API request is a GET with no
+  body, and `checkQuery()` in `server/aroflo.js` refuses anything except the few read queries the sync uses
+  (zones `tasks`, `clients`, `lastupdate`; simple `and|field|op|value` filters on known fields) before it is
+  signed or sent. Browsers never choose what is sent to AroFlo, and never see the AroFlo keys.
+  **Also set this up in AroFlo:** make the API keys belong to an AroFlo user whose permission group can only
+  *view* Tasks, Clients and Documents/Photos. Then even stolen keys can't change anything.
+- **No ids in URLs.** Jobs, photos, clients and users are referred to by encrypted, tamper-proof tokens
+  (`server/tokens.js`, AES-256-GCM). An edited or forged token simply returns "not found".
+- **Nothing points clients at AroFlo, even in the browser's developer tools ("Inspect").** Client-facing errors
+  are generic; API responses carry only display fields; scripts and styles are served minified with comments
+  stripped (`server/assets.js`; `/*! … */` licence lines kept); photos are named after the job
+  (`CustON-1234-photo-x7Kq2a.jpg`), never the upload's name; and the Control Panel script and admin API look
+  non-existent (404) to anyone but an admin. The only cookie is the http-only session cookie.
+- **No hidden photo metadata.** Every stored or downloaded photo is re-encoded (`server/images.js`), which
+  drops EXIF/XMP data such as GPS location, phone model and the app that saved it, at full resolution.
+  Photos cached before this change are cleaned once in the background after start-up.
+- **Admin two-factor sign-in.** Admins enter a code from an authenticator app (Microsoft, Google, etc.) after
+  their password; they set it up at their first sign-in. Admin sessions last 12 hours, client sessions 14 days.
+  - *Lost phone:* another admin opens the user in **Control Panel → Users** and clicks *Reset two-factor*.
+  - *Only admin, lost phone:* add the App Setting `RESET_2FA_EMAIL=<their email>`, let the app restart, sign
+    in and set up 2FA again, then **remove the setting** (it resets again on every restart while set).
+- **`APP_SECRET`** (App Setting, 32+ random characters) is the key for the encrypted tokens and the stored 2FA
+  keys. If it isn't set, one is generated and kept in the database (that key keeps working if `APP_SECRET` is
+  added later). Once set, never change it: changing it breaks saved job links and every admin's 2FA (use
+  `RESET_2FA_EMAIL` to recover). `azure-provision.ps1` creates it when missing.
+- **Abuse protection:** sign-in lockouts per 15 minutes (8 failures per email+IP, 30 per IP, 20 per email
+  across all IPs; an IPv6 /64 counts as one IP); wrong 2FA codes capped at 5 per 15 minutes and 20 per day
+  per admin; 600 API requests per minute per IP; and a per-user limit on opening photos that have to come
+  from AroFlo first (20 per 10 minutes for clients, 100 for admins). *Full resync* can run once per 10 minutes
+  and *Refresh list* once a minute. AroFlo calls pause for an hour when fewer than `AROFLO_DAILY_RESERVE`
+  (default 200) of today's calls remain, to protect TTS's other integrations.
+- **Sessions:** changing a password signs that user out everywhere (your own change keeps only your current
+  sign-in); disabling a user or changing their role signs them out immediately.
+- **Security log:** lockouts, wrong 2FA codes and 2FA set-ups are written to the app log with the address
+  they came from, prefixed `[security]` (Azure: `az webapp log tail …`).
+- **Headers:** strict Content-Security-Policy, HSTS (on HTTPS), no framing, no referrer, `no-store` on API
+  responses; signing out clears cached photos from the browser.
 
 ## How data gets from AroFlo (server/sync.js)
 

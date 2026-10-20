@@ -58,6 +58,8 @@ export function createStore(db, fileDir) {
                                   WHERE p.file IS NOT NULL AND p.compressed = 0 AND j.completed IS NOT NULL
                                     AND substr(j.completed, 1, 10) < ? LIMIT ?`),
     filesForJob: h.prepare('SELECT file FROM job_photos WHERE task_id = ? AND file IS NOT NULL'),
+    fullSizeFiles: h.prepare('SELECT DISTINCT file FROM job_photos WHERE file IS NOT NULL AND compressed = 0'),
+    setFileType: h.prepare('UPDATE job_photos SET content_type = ? WHERE file = ?'),
     countPhotos: h.prepare('SELECT COUNT(*) AS photos, COUNT(file) AS photosSaved FROM job_photos'),
 
     getState: h.prepare('SELECT value FROM sync_state WHERE key = ?'),
@@ -126,6 +128,9 @@ export function createStore(db, fileDir) {
     setPhotoFile: (taskId, docId, file, contentType, compressed = false) => q.setPhotoFile.run(file, contentType, compressed ? 1 : 0, taskId, docId),
     forgetPhotoFile: (file) => q.forgetPhotoFile.run(file),
     markCompressed: (file, contentType) => q.markCompressed.run(contentType, file),
+    // Cached photo files stored at full size (not shrunk).
+    fullSizeFiles: () => q.fullSizeFiles.all().map((r) => r.file),
+    setFileType: (file, contentType) => q.setFileType.run(contentType, file),
     // Cached photo files (not yet shrunk) of jobs completed before the given date.
     photosToCompress: (beforeDate, limit) => q.photosToCompress.all(beforeDate, limit).map((r) => r.file),
     // Active clients' jobs completed on/after the date that still have photos to download, newest first.

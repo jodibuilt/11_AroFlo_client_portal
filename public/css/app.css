@@ -242,8 +242,7 @@ table.data { width: 100%; border-collapse: collapse; font-variant-numeric: tabul
 .notes li { padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .notes li:last-child { border-bottom: none; }
 .note-meta { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-.note-meta b { font-weight: 600; }
-.note-meta time { margin-left: auto; color: var(--ink-3); font-size: var(--text-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.note-meta time { color: var(--ink-3); font-size: var(--text-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .note-text { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; color: var(--ink); }
 
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; padding: 16px; }
@@ -338,6 +337,12 @@ fieldset.field legend { padding: 0; margin-bottom: 8px; font-weight: 600; color:
 .signin-card form { display: flex; flex-direction: column; gap: 16px; }
 .signin-card .btn { width: 100%; height: 40px; margin-top: 4px; }
 .signin-foot { padding: 20px; text-align: center; color: var(--ink-3); font-size: var(--text-sm); }
+/* Admin two-factor step */
+.mfa-setup { display: grid; justify-items: center; gap: 10px; text-align: center; }
+.mfa-qr { width: 180px; height: 180px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.mfa-key { padding: 6px 10px; border-radius: var(--radius-sm); background: var(--ground); border: 1px solid var(--line); font-family: Consolas, "Cascadia Mono", monospace; font-size: var(--text-md); overflow-wrap: anywhere; } /* wraps between groups of 4 */
+.signin-card input[name="code"] { font-family: Consolas, "Cascadia Mono", monospace; font-size: var(--text-lg); letter-spacing: .2em; }
+.mfa-restart { align-self: center; font-size: var(--text-sm); }
 
 /* ---------- Responsive ---------- */
 /* Header steps down as space runs out: user details go, then nav and sign-out labels
@@ -399,11 +404,15 @@ fieldset.field legend { padding: 0; margin-bottom: 8px; font-weight: 600; color:
 
 /* ---------- Print: the job completion record ---------- */
 @media print {
-  @page { size: A4; margin: 16mm 14mm; }
+  /* Browsers print the title and date in the top margin and the portal link in the bottom
+     one. No bottom margin means no link; the page's bottom padding (repeated on every sheet)
+     keeps the content off the edge instead. */
+  @page { size: A4; margin: 0; }
   :root { font-size: 11pt; }
   body { background: #fff; }
   .topbar, .notice, .no-print, .viewer { display: none !important; }
-  .page { max-width: none; padding: 0; }
+  .page { max-width: none; padding: 16mm 14mm 14mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  /* Who wrote each note stays off the printed record. */
   .panel { border: none; box-shadow: none; border-radius: 0; }
   .print-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 2px solid var(--brand); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .print-head img { height: 18pt; }
@@ -438,7 +447,7 @@ fieldset.field legend { padding: 0; margin-bottom: 8px; font-weight: 600; color:
   .toolbar .input-icon.search, .toolbar .input-icon.period { flex: 1 1 100%; }
 }
 
-/* ---------- Jobs grid (AroFlo/Simpro-style data table) ---------- */
+/* ---------- Jobs grid (job-management-style data table) ---------- */
 .search-panel { margin-bottom: 20px; }
 .search-panel .toolbar { align-items: flex-end; border-bottom: none; }
 .search-panel .field.search { flex: 1 1 320px; }
@@ -530,3 +539,38 @@ table.grid { table-layout: fixed; }
 .switch input:disabled + .switch-track { opacity: .5; }
 .switch input:checked ~ span:last-child { color: var(--ok); font-weight: 600; }
 .compact-select { width: auto; min-width: 150px; }
+
+/* ---------- Small screens: every page ---------- */
+.pager, .note-meta, .copy-row, .viewer-top { flex-wrap: wrap; }
+.copy-row input { flex: 1 1 260px; min-width: 0; }
+.stats { grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); }
+.drawer-foot { flex-wrap: wrap; }
+@media (max-width: 720px) {
+  /* Panel heads: search boxes take a full row under the title */
+  .panel-head .input-icon { flex: 1 1 100%; width: 100%; order: 10; }
+  .panel-head .compact-select { flex: 1 1 auto; }
+  .panel-body { padding: 14px; }
+  .drawer-head { padding: 14px 16px; }
+  .drawer-body { padding: 16px; }
+  .drawer-foot { padding: 12px 16px; }
+  .drawer-foot .btn { flex: 1 1 auto; }
+  .signin-card { padding: 24px 20px; }
+  .signin-main { padding: 24px 16px; }
+  .viewer-top { padding: 10px 12px; gap: 8px; }
+  .viewer-cap { padding: 10px 12px 16px; }
+  .viewer-stage img { max-height: calc(100vh - 170px); }
+  .pager { padding: 12px 16px; }
+  .button-row .btn { flex: 1 1 auto; }
+
+  /* Control Panel tables become one card per row */
+  table.data.cards thead { display: none; }
+  table.data.cards, .data.cards tbody, .data.cards tr { display: block; width: auto; }
+  .data.cards tr { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .data.cards tbody tr:last-child { border-bottom: none; }
+  .data.cards tbody tr:nth-child(even) td, .data.cards tbody tr:hover td { background: transparent; }
+  .data.cards td { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 0; border: none; width: auto; }
+  .data.cards td[data-label]::before { content: attr(data-label); flex: 0 0 110px; color: var(--ink-3); font-size: var(--text-sm); }
+  .data.cards td:empty { display: none; }
+  .data.cards .card-title { display: block; padding-bottom: 6px; font-weight: 600; }
+  .data.cards .card-action { padding-top: 6px; }
+}

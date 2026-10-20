@@ -26,7 +26,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { shrink, SHRUNK_TYPE } from './images.js';
+import { shrink, cleanFullSize, canProcess, SHRUNK_TYPE } from './images.js';
 
 const MIN = 60_000;
 const PHOTO_EXT = /\.(jpe?g|png|gif|webp|bmp)$/i;
@@ -58,6 +58,13 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
   const queuedTasks = new Set();
   const queuedClients = new Set(); // client ids to download after being activated
   const photoAttempts = new Map(); // taskId -> time of last failed download attempt
+  // On-demand AroFlo fetches in progress. A job page asks for all its photos at once, so
+  // parallel requests for the same job share one fetch instead of one each.
+  const inflight = new Map();
+  const once = (key, fn) => {
+    if (!inflight.has(key)) inflight.set(key, fn().finally(() => inflight.delete(key)));
+    return inflight.get(key);
+  };
   let running = null;
   let runAgain = false;
   let soonTimer = null;
@@ -107,11 +114,13 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
         const { contentType, body } = await aroflo.fetchDocument(p.url);
         if (!/^image\//i.test(contentType)) continue;
         const file = `${crypto.createHash('sha256').update(p.id).digest('hex')}.bin`;
-        // Photos of jobs completed more than compressAfterDays ago are stored shrunk.
+        // Photos of jobs completed more than compressAfterDays ago are stored shrunk; the
+        // rest at full size. Either way hidden metadata (GPS, device) is removed.
         const old = job.completed && job.completed.slice(0, 10) < compressBefore();
         const small = old ? await shrink(body) : null;
-        await fs.promises.writeFile(path.join(store.fileDir, file), small || body);
-        store.setPhotoFile(job.taskId, p.id, file, small ? SHRUNK_TYPE : contentType, Boolean(small));
+        const clean = small ? { body: small, type: SHRUNK_TYPE } : await cleanFullSize(body);
+        await fs.promises.writeFile(path.join(store.fileDir, file), clean?.body || body);
+        store.setPhotoFile(job.taskId, p.id, file, clean?.type || contentType, Boolean(small));
         keep.add(file);
       } catch (err) {
         failed = true;
@@ -203,6 +212,14 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
   };
 
   const clientWhere = (c) => `and|clientname|=|${c.clientName}`;
+  // Client names go into AroFlo filters, which can't contain "|" or line breaks (aroflo.js
+  // refuses them). Such a client is skipped with a warning instead of stopping the sync.
+  const queryable = (c) => {
+    const ok = !/[|\r\n]/.test(c.clientName) && c.clientName.length <= 200;
+    if (!ok) log.warn(`Client ${JSON.stringify(c.clientName)} can't be synced: its name can't be used in an AroFlo filter.`);
+    return ok;
+  };
+  const activeClients = () => store.activeClients().filter(queryable);
 
   async function downloadClient(client, seen) {
     await eachTask([clientWhere(client), ...fromWhere()], async (task) => {
@@ -214,7 +231,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
   async function fullSync() {
     const startedAt = utcStamp(Date.now() - 2 * MIN);
     const seen = new Set();
-    for (const client of store.activeClients()) await downloadClient(client, seen);
+    for (const client of activeClients()) await downloadClient(client, seen);
     for (const id of store.allJobIds()) if (!seen.has(id)) store.removeJob(id);
     store.setState('cursor', { at: startedAt, keys: [] });
     store.setState('fullSyncAt', new Date().toISOString());
@@ -273,7 +290,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
     const since = new Date(Date.now() - NEW_JOBS_DAYS * 24 * 60 * MIN).toISOString().slice(0, 10);
     const cutoff = fromWhere()[0].split('|').pop(); // day before the sync-from date
     const after = since > cutoff ? since : cutoff;
-    for (const client of store.activeClients()) {
+    for (const client of activeClients()) {
       await eachTask([clientWhere(client), `and|datecompleted|>|${after}`], (task) => applyTask(task));
     }
     store.setState('newJobsAt', Date.now());
@@ -282,7 +299,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
   async function refreshRecent() {
     const since = new Date(Date.now() - RECENT_DAYS * 24 * 60 * MIN).toISOString().slice(0, 10);
     const recent = `and|datecompleted|>|${since}`;
-    const active = store.activeClients();
+    const active = activeClients();
     // A few active clients: ask per client. Many: one query for everyone is cheaper, and
     // applyTask simply ignores jobs of inactive clients.
     if (active.length && active.length <= 5) {
@@ -322,6 +339,31 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
       }
     })().catch((err) => log.warn(`Photo pre-download failed: ${err.message}`)).finally(() => { prefetching = null; });
     return prefetching;
+  }
+
+  // One-off: photos cached at full size before metadata cleaning existed are cleaned in
+  // place (via a temp file, keeping their "last viewed" time). Runs again only if sharp
+  // was unavailable.
+  let cleaning = null;
+  function cleanCachedPhotos() {
+    if (cleaning || store.getState('photosCleaned')) return cleaning || Promise.resolve();
+    cleaning = (async () => {
+      if (!(await canProcess())) return;
+      for (const name of store.fullSizeFiles()) {
+        const full = path.join(store.fileDir, name);
+        const original = await fs.promises.readFile(full).catch(() => null);
+        if (!original) { store.forgetPhotoFile(name); continue; }
+        const clean = await cleanFullSize(original);
+        if (!clean) continue;
+        const stat = await fs.promises.stat(full);
+        await fs.promises.writeFile(`${full}.tmp`, clean.body);
+        await fs.promises.rename(`${full}.tmp`, full);
+        await fs.promises.utimes(full, stat.atime, stat.mtime);
+        store.setFileType(name, clean.type);
+      }
+      store.setState('photosCleaned', true);
+    })().catch((err) => log.warn(`Photo metadata cleaning failed: ${err.message}`)).finally(() => { cleaning = null; });
+    return cleaning;
   }
 
   let compressing = null;
@@ -369,7 +411,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
         for (const clientId of [...queuedClients]) {
           queuedClients.delete(clientId);
           const client = store.getClient(clientId);
-          if (client?.active && store.getState('cursor')) await downloadClient(client);
+          if (client?.active && store.getState('cursor') && queryable(client)) await downloadClient(client);
         }
         for (const taskId of [...queuedTasks]) {
           queuedTasks.delete(taskId);
@@ -411,7 +453,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
     status,
     start() {
       store.removeJobsOutsideActive();
-      setTimeout(() => trimPhotoCache().then(() => compressAgedPhotos()).then(() => prefetchRecentPhotos()), 15_000);
+      setTimeout(() => trimPhotoCache().then(() => compressAgedPhotos()).then(() => cleanCachedPhotos()).then(() => prefetchRecentPhotos()), 15_000);
       if (getSyncFrom()) store.removeJobsCompletedBefore(getSyncFrom());
       const schedule = (delay) => setTimeout(async () => {
         await run();
@@ -453,19 +495,25 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
     async refreshClients() {
       await refreshClients();
     },
-    // Used when someone opens a photo we haven't downloaded yet (e.g. admin previewing a
-    // client nobody is linked to): one single-task fetch for fresh links, then download.
     // Full-resolution original of one photo, straight from AroFlo (not cached). Used for
     // "Download" when the cached copy has been shrunk.
-    async fetchOriginalPhoto(taskId, docId) {
-      const task = await fetchTask(taskId);
-      const doc = (task?.documentsandphotos || []).find((d) => d.documentid === docId);
-      if (!doc?.url) return null;
-      return aroflo.fetchDocument(doc.url);
+    fetchOriginalPhoto(taskId, docId) {
+      return once(`original|${taskId}|${docId}`, async () => {
+        const task = await fetchTask(taskId);
+        const doc = (task?.documentsandphotos || []).find((d) => d.documentid === docId);
+        if (!doc?.url) return null;
+        const original = await aroflo.fetchDocument(doc.url);
+        const clean = await cleanFullSize(original.body); // full resolution, no hidden metadata
+        return clean ? { contentType: clean.type, body: clean.body } : original;
+      });
     },
-    async fetchPhotosNow(taskId) {
-      await syncTask(taskId, { downloadAll: true });
+    cleanCachedPhotos,
+    // Used when someone opens a photo we haven't downloaded yet (e.g. admin previewing a
+    // client nobody is linked to): one single-task fetch for fresh links, then download.
+    fetchPhotosNow(taskId) {
+      return once(`photos|${taskId}`, () => syncTask(taskId, { downloadAll: true }));
     },
+    isFetchingPhotos: (taskId) => inflight.has(`photos|${taskId}`),
   };
 }
 

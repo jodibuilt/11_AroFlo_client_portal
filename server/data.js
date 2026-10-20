@@ -41,25 +41,30 @@ export function createPortalData({ store, sync }) {
         completed: job.completed,
         notes: store.notesForJob(taskId)
           .filter((n) => visible(n.filter, settings.noteVisibility))
-          .map(({ filter, ...n }) => n),
+          .map(({ text, posted }) => ({ text, posted })),
+        // `id` is AroFlo's document id: index.js swaps it for an encrypted reference.
         photos: store.photosForJob(taskId)
           .filter((p) => visible(p.filter, settings.fileVisibility))
           // AroFlo gives upload times in UTC (unlike job and note times, which are local),
           // so mark them as UTC and let the browser show local time.
-          .map(({ id, name, comment, uploaded }) => ({ id, name, comment, uploaded: uploaded?.includes('T') ? `${uploaded}Z` : uploaded })),
+          .map(({ id, comment, uploaded }) => ({ id, comment, uploaded: uploaded?.includes('T') ? `${uploaded}Z` : uploaded })),
       };
     },
 
-    async getFile(taskId, docId, clientIds, settings) {
-      if (!accessibleJob(taskId, clientIds, settings)) return null;
+    // canFetch() is asked only when the photo must come from AroFlo first and no fetch
+    // for this job is already running; returning false gives { limited: true }.
+    async getFile(taskId, docId, clientIds, settings, canFetch = () => true) {
+      const job = accessibleJob(taskId, clientIds, settings);
+      if (!job) return null;
       let photo = store.getPhoto(taskId, docId);
       if (!photo || !visible(photo.filter, settings.fileVisibility)) return null;
       if (!photo.file) {
+        if (!sync.isFetchingPhotos(taskId) && !canFetch()) return { limited: true };
         await sync.fetchPhotosNow(taskId);
         photo = store.getPhoto(taskId, docId);
         if (!photo?.file) return null;
       }
-      return { contentType: photo.content_type, name: photo.name, compressed: Boolean(photo.compressed), filePath: path.join(store.fileDir, photo.file) };
+      return { contentType: photo.content_type, custOn: job.cust_on, compressed: Boolean(photo.compressed), filePath: path.join(store.fileDir, photo.file) };
     },
   };
 }

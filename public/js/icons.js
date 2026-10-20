@@ -1,5 +1,6 @@
-// Line icons from Lucide (lucide-static 0.460.0, ISC licence, https://lucide.dev).
-// Each entry is the inner markup of a 24x24, 2px-stroke icon; see icon() in common.js.
+/*! Icons from Lucide, ISC licence, https://lucide.dev */
+// lucide-static 0.460.0. Each entry is the inner markup of a 24x24, 2px-stroke icon;
+// see icon() in common.js. The licence line above is kept when scripts are minified.
 export const ICONS = {
   'activity': '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
   'briefcase': '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/>',

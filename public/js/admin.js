@@ -72,22 +72,23 @@ function drawUsers(flash) {
         ? emptyState('search', 'No users match', 'Try a different name, email or client.')
         : emptyState('user', 'No users yet', 'Create a login for each client contact, and link it to their AroFlo client.'));
     }
-    mount(tableHost, h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+    mount(tableHost, h('div', { class: 'table-wrap' }, h('table', { class: 'data cards' },
       h('thead', {}, h('tr', {}, ['Name', 'Role', 'Linked clients', 'Status', 'Last sign-in', ''].map((t) => h('th', { scope: 'col' }, t)))),
       h('tbody', {}, rows.map((u) => h('tr', {},
-        h('td', {},
+        h('td', { class: 'card-title' },
           h('a', { class: 'job-link', href: '#users', onclick: (e) => { e.preventDefault(); openUserDrawer(u); } }, u.name),
           h('div', { class: 'task-site' }, u.email)),
-        h('td', {}, h('span', { class: `tag${u.role === 'admin' ? ' admin' : ''}` }, u.role === 'admin' ? 'Admin' : 'Client')),
-        h('td', {}, u.role === 'admin' ? h('span', { class: 'muted' }, 'All clients')
+        h('td', { 'data-label': 'Role' }, h('span', { class: `tag${u.role === 'admin' ? ' admin' : ''}` }, u.role === 'admin' ? 'Admin' : 'Client'),
+          u.role === 'admin' ? [' ', h('span', { class: `tag ${u.mfa ? 'on' : 'off'}`, title: 'Two-factor sign-in' }, u.mfa ? '2FA on' : '2FA not set up')] : null),
+        h('td', { 'data-label': 'Linked clients' }, u.role === 'admin' ? h('span', { class: 'muted' }, 'All clients')
           : u.clients.length ? [u.clients.slice(0, 2).map((c) => h('span', { class: 'tag' }, c.clientName)),
             u.clients.length > 2 ? h('span', { class: 'muted' }, ` +${u.clients.length - 2} more`) : null]
             : h('span', { class: 'tag off' }, 'None linked')),
-        h('td', {}, h('span', { class: `tag ${u.active ? 'on' : 'off'}` }, u.active ? 'Active' : 'Disabled')),
-        h('td', { class: 'num' }, localTime(u.last_login_at)),
-        h('td', { class: 'col-job' },
+        h('td', { 'data-label': 'Status' }, h('span', { class: `tag ${u.active ? 'on' : 'off'}` }, u.active ? 'Active' : 'Disabled')),
+        h('td', { class: 'num', 'data-label': 'Last sign-in' }, localTime(u.last_login_at)),
+        h('td', { class: 'col-job card-action' },
           u.role === 'client' && u.clients[0]
-            ? h('a', { class: 'btn small quiet', href: `/?client=${encodeURIComponent(u.clients[0].clientId)}` }, icon('eye'), 'Preview')
+            ? h('a', { class: 'btn small quiet', href: `/?client=${encodeURIComponent(u.clients[0].id)}` }, icon('eye'), 'Preview')
             : null),
       ))),
     )));
@@ -108,16 +109,23 @@ function drawUsers(flash) {
   );
 }
 
+// 12 characters, every one equally likely (bytes that would skew the pick are skipped).
 function generatePassword() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+  const limit = 256 - (256 % alphabet.length);
+  let out = '';
+  while (out.length < 12) {
+    for (const b of crypto.getRandomValues(new Uint8Array(16))) {
+      if (b < limit && out.length < 12) out += alphabet[b % alphabet.length];
+    }
+  }
+  return out;
 }
 
 function openUserDrawer(user) {
   const isNew = !user;
   const isSelf = user?.id === me.user.id;
-  const selected = new Map((user?.clients || []).map((c) => [c.clientId, c]));
+  const selected = new Map((user?.clients || []).map((c) => [c.id, c]));
   const msg = h('div');
 
   const name = h('input', { type: 'text', value: user?.name || '', required: true, autocomplete: 'off' });
@@ -126,7 +134,7 @@ function openUserDrawer(user) {
     h('option', { value: 'client', selected: user?.role !== 'admin' }, 'Client: sees completed jobs for their linked clients'),
     h('option', { value: 'admin', selected: user?.role === 'admin' }, 'Admin: manages the portal'));
   const active = h('input', { type: 'checkbox', checked: user ? user.active : true, disabled: isSelf });
-  const password = h('input', { type: 'text', autocomplete: 'new-password', placeholder: isNew ? 'At least 8 characters' : 'Leave blank to keep the current password' });
+  const password = h('input', { type: 'text', autocomplete: 'new-password', placeholder: isNew ? 'At least 10 characters' : 'Leave blank to keep the current password' });
   if (isNew) password.value = generatePassword();
 
   // Client picker
@@ -138,15 +146,15 @@ function openUserDrawer(user) {
     oninput: (e) => { filter = e.target.value; drawList(); } });
   const drawChips = () => mount(chips, selected.size
     ? [...selected.values()].map((c) => h('span', { class: 'chip' }, c.clientName,
-      h('button', { type: 'button', 'aria-label': `Remove ${c.clientName}`, onclick: () => { selected.delete(c.clientId); drawChips(); drawList(); } }, icon('close'))))
+      h('button', { type: 'button', 'aria-label': `Remove ${c.clientName}`, onclick: () => { selected.delete(c.id); drawChips(); drawList(); } }, icon('close'))))
     : h('span', { class: 'hint' }, 'No clients linked yet. This user will see no jobs.'));
   const drawList = () => {
     if (!allClients.length) return;
     const needle = filter.trim().toLowerCase();
     const matches = allClients.filter((c) => !needle || c.clientName.toLowerCase().includes(needle));
     mount(list, matches.slice(0, 200).map((c) => h('label', {},
-      h('input', { type: 'checkbox', checked: selected.has(c.clientId),
-        onchange: (e) => { if (e.target.checked) selected.set(c.clientId, c); else selected.delete(c.clientId); drawChips(); } }),
+      h('input', { type: 'checkbox', checked: selected.has(c.id),
+        onchange: (e) => { if (e.target.checked) selected.set(c.id, c); else selected.delete(c.id); drawChips(); } }),
       c.clientName)),
     matches.length > 200 ? h('div', { class: 'empty compact' }, h('p', {}, `${matches.length - 200} more. Refine your search.`)) : null,
     !matches.length ? h('div', { class: 'empty compact' }, h('p', {}, 'No clients match.')) : null);
@@ -170,12 +178,12 @@ function openUserDrawer(user) {
   async function save(e) {
     e.preventDefault();
     mount(msg);
-    const body = { name: name.value, email: email.value, role: role.value, active: active.checked, clients: [...selected.values()] };
+    const body = { name: name.value, email: email.value, role: role.value, active: active.checked, clients: [...selected.keys()].map((id) => ({ id })) };
     if (password.value) body.password = password.value;
     saveBtn.disabled = true;
     try {
       if (isNew) await api('/api/admin/users', { method: 'POST', body });
-      else await api(`/api/admin/users/${user.id}`, { method: 'PUT', body });
+      else await api(`/api/admin/users/${encodeURIComponent(user.id)}`, { method: 'PUT', body });
       close();
       users = (await api('/api/admin/users')).users;
       drawUsers(password.value ? passwordReveal(body.email, password.value, isNew) : okBox(`Saved ${body.name}.`));
@@ -188,10 +196,22 @@ function openUserDrawer(user) {
   async function remove() {
     if (!confirm(`Delete ${user.name}? They will no longer be able to sign in. This can't be undone.`)) return;
     try {
-      await api(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+      await api(`/api/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' });
       close();
       users = users.filter((u) => u.id !== user.id);
       drawUsers(okBox(`Deleted ${user.name}.`));
+    } catch (err) {
+      mount(msg, errorBox(err.message));
+    }
+  }
+
+  async function resetMfa() {
+    if (!confirm(`Reset two-factor sign-in for ${user.name}? They'll be signed out and will set it up again with their authenticator app next time they sign in.`)) return;
+    try {
+      await api(`/api/admin/users/${encodeURIComponent(user.id)}/reset-2fa`, { method: 'POST' });
+      close();
+      users = (await api('/api/admin/users')).users;
+      drawUsers(okBox(`Two-factor sign-in reset for ${user.name}.`));
     } catch (err) {
       mount(msg, errorBox(err.message));
     }
@@ -214,6 +234,14 @@ function openUserDrawer(user) {
           password,
           h('div', {}, h('button', { class: 'btn small', type: 'button', onclick: () => { password.value = generatePassword(); } }, icon('refresh'), 'Generate password'))),
         clientField,
+        !isNew && !isSelf && user.role === 'admin' ? h('div', { class: 'field wide' },
+          h('span', {}, 'Two-factor sign-in'),
+          user.mfa
+            ? h('div', {}, h('button', { class: 'btn small', type: 'button', onclick: resetMfa }, icon('refresh'), 'Reset two-factor'))
+            : null,
+          h('span', { class: 'hint' }, user.mfa
+            ? 'Set up. Reset it if they lose or replace their phone; they’ll set it up again at their next sign-in.'
+            : 'Not set up yet. They’ll be asked to set it up with an authenticator app at their next sign-in.')) : null,
         !isNew ? h('label', { class: 'check wide' }, active,
           h('span', {}, 'Account active', h('div', { class: 'hint' }, isSelf ? 'You can’t disable your own account.' : 'Untick to block sign-in without deleting the user.'))) : null,
       ),
@@ -268,7 +296,7 @@ async function renderClients(flash) {
     }
     input.disabled = true;
     try {
-      await api(`/api/admin/clients/${encodeURIComponent(c.clientId)}`, { method: 'PUT', body: { active: want } });
+      await api(`/api/admin/clients/${encodeURIComponent(c.id)}`, { method: 'PUT', body: { active: want } });
       c.active = want;
       if (!want) c.jobs = 0;
       clientsCache = null;
@@ -291,16 +319,16 @@ async function renderClients(flash) {
       .filter((c) => !needle || c.clientName.toLowerCase().includes(needle))
       .sort((a, b) => (b.active - a.active) || a.clientName.localeCompare(b.clientName));
     if (!rows.length) return mount(tableHost, emptyState('search', 'No clients match', 'Try a different name or filter.'));
-    mount(tableHost, h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+    mount(tableHost, h('div', { class: 'table-wrap' }, h('table', { class: 'data cards' },
       h('thead', {}, h('tr', {}, ['Client', 'In portal', 'Linked users', 'Jobs synced'].map((t) => h('th', { scope: 'col' }, t)))),
       h('tbody', {}, rows.slice(0, 300).map((c) => {
         const input = h('input', { type: 'checkbox', role: 'switch', checked: c.active, 'aria-label': `${c.clientName} active in portal` });
         input.addEventListener('change', () => toggle(c, input));
         return h('tr', {},
-          h('td', {}, c.clientName),
-          h('td', {}, h('label', { class: 'switch' }, input, h('span', { class: 'switch-track', 'aria-hidden': 'true' }), h('span', {}, c.active ? 'Active' : 'Inactive'))),
-          h('td', { class: 'num' }, c.users || ''),
-          h('td', { class: 'num' }, c.active ? c.jobs : ''));
+          h('td', { class: 'card-title' }, c.clientName),
+          h('td', { 'data-label': 'In portal' }, h('label', { class: 'switch' }, input, h('span', { class: 'switch-track', 'aria-hidden': 'true' }), h('span', {}, c.active ? 'Active' : 'Inactive'))),
+          h('td', { class: 'num', 'data-label': 'Linked users' }, c.users || ''),
+          h('td', { class: 'num', 'data-label': 'Jobs synced' }, c.active ? c.jobs : ''));
       })))),
     rows.length > 300 ? h('p', { class: 'hint panel-body' }, `Showing 300 of ${rows.length}. Search to narrow the list.`) : null);
   }
@@ -429,6 +457,9 @@ async function renderStatus() {
         msg,
         data.mode === 'demo' ? h('div', { class: 'alert warn' }, icon('alert'), h('span', {}, 'Demo mode: sample data, not live AroFlo jobs. Set DEMO_MODE=false and restart to go live.')) : null,
         y.lastError ? errorBox(`The last sync failed: ${y.lastError}`) : null,
+        s.pausedUntil && new Date(s.pausedUntil) > new Date()
+          ? h('div', { class: 'alert warn' }, icon('alert'), h('span', {}, `AroFlo calls are paused until ${localTime(s.pausedUntil)} because today's API allowance is nearly used up. This keeps calls in reserve for TTS's other AroFlo integrations.`))
+          : null,
         h('div', { class: 'stats' },
           stat('Status', y.running ? 'Syncing now…' : 'Up to date'),
           stat('Last successful sync', localTime(y.lastSuccessAt)),

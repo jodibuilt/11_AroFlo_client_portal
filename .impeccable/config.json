@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "public/login.html"
+        ],
+        "createdAt": "2026-10-20T01:08:13.786Z",
+        "reason": "Claude triage: false positive. .org has padding-left: clamp(12px, 1.6vw, 18px) next to its border-left (app.css:106); screenshots show the 'Client Portal' label clearly inset from the divider. Markup predates this session."
+      }
+    ]
+  }
+}

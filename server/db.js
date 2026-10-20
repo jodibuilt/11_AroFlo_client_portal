@@ -31,7 +31,9 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
       password_hash TEXT NOT NULL,
       active        INTEGER NOT NULL DEFAULT 1,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-      last_login_at TEXT
+      last_login_at TEXT,
+      totp_secret   TEXT,                       -- admin 2FA key, sealed with APP_SECRET (tokens.js)
+      totp_last_step INTEGER NOT NULL DEFAULT 0 -- last code used, so a code can't be replayed
     );
 
     CREATE TABLE IF NOT EXISTS user_clients (
@@ -114,6 +116,13 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
     db.exec(`ALTER TABLE jobs ADD COLUMN cust_on TEXT NOT NULL DEFAULT '';
              DELETE FROM sync_state WHERE key = 'cursor';`);
   }
+  // Older databases: add admin two-factor sign-in, and sign admins out so every admin
+  // session from now on has passed 2FA.
+  if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'totp_secret')) {
+    db.exec(`ALTER TABLE users ADD COLUMN totp_secret TEXT;
+             ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;
+             DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE role = 'admin');`);
+  }
   if (!db.prepare('PRAGMA table_info(clients)').all().some((c) => c.name === 'active')) {
     db.exec(`ALTER TABLE clients ADD COLUMN active INTEGER NOT NULL DEFAULT 0;
              UPDATE clients SET active = 1 WHERE client_id IN (SELECT client_id FROM user_clients);`);
@@ -123,10 +132,14 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
     countUsers: db.prepare('SELECT COUNT(*) AS n FROM users'),
     userById: db.prepare('SELECT * FROM users WHERE id = ?'),
     userByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
-    listUsers: db.prepare('SELECT id, email, name, role, active, created_at, last_login_at FROM users ORDER BY role, name'),
+    listUsers: db.prepare(`SELECT id, email, name, role, active, created_at, last_login_at, totp_secret IS NOT NULL AS mfa
+                           FROM users ORDER BY role, name`),
     insertUser: db.prepare('INSERT INTO users (email, name, role, password_hash) VALUES (?, ?, ?, ?)'),
     updateUser: db.prepare('UPDATE users SET email = ?, name = ?, role = ?, active = ? WHERE id = ?'),
     setPassword: db.prepare('UPDATE users SET password_hash = ? WHERE id = ?'),
+    enrolTotp: db.prepare('UPDATE users SET totp_secret = ?, totp_last_step = ? WHERE id = ? AND totp_secret IS NULL'),
+    useTotpStep: db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ? AND totp_last_step < ?'),
+    clearTotp: db.prepare('UPDATE users SET totp_secret = NULL, totp_last_step = 0 WHERE id = ?'),
     deleteUser: db.prepare('DELETE FROM users WHERE id = ?'),
     touchLogin: db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?"),
     clientsForUser: db.prepare('SELECT client_id AS clientId, client_name AS clientName FROM user_clients WHERE user_id = ? ORDER BY client_name'),
@@ -168,7 +181,7 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
         if (!byUser.has(a.userId)) byUser.set(a.userId, []);
         byUser.get(a.userId).push({ clientId: a.clientId, clientName: a.clientName });
       }
-      return q.listUsers.all().map((u) => ({ ...u, active: !!u.active, clients: byUser.get(u.id) || [] }));
+      return q.listUsers.all().map((u) => ({ ...u, active: !!u.active, mfa: !!u.mfa, clients: byUser.get(u.id) || [] }));
     },
     createUser: ({ email, name, role, passwordHash, clients }) =>
       transaction(() => {
@@ -185,6 +198,10 @@ export function openDatabase(dataDir, { journalMode = 'WAL' } = {}) {
         if (!active) q.deleteUserSessions.run(id);
       }),
     setPassword: (id, passwordHash) => q.setPassword.run(passwordHash, id),
+    // Each returns false if nothing changed: already enrolled, or the code's step was used.
+    enrolTotp: (id, sealedSecret, step) => q.enrolTotp.run(sealedSecret, step, id).changes === 1,
+    useTotpStep: (id, step) => q.useTotpStep.run(step, id, step).changes === 1,
+    clearTotp: (id) => q.clearTotp.run(id),
     deleteUser: (id) => q.deleteUser.run(id),
     touchLogin: (id) => q.touchLogin.run(id),
     clientsForUser: (id) => q.clientsForUser.all(id),
