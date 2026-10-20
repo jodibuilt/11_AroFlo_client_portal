@@ -73,26 +73,41 @@ export function createAroFloClient(config) {
     pausedUntil: null,
   };
 
-  // Serialised queue so concurrent page loads can't burst past the limits.
-  let chain = Promise.resolve();
+  // Serialised queue so concurrent page loads can't burst past the limits. Someone waiting
+  // on a page (urgent) always goes ahead of background sync and photo pre-downloads.
+  const queues = { urgent: [], background: [] };
+  let pumping = false;
   let lastSent = 0;
   const sentTimes = [];
 
-  function schedule(fn) {
-    const run = chain.then(async () => {
-      const now = Date.now();
-      while (sentTimes.length && now - sentTimes[0] > 60_000) sentTimes.shift();
-      let wait = Math.max(0, lastSent + MIN_GAP_MS - now);
-      if (sentTimes.length >= PER_MINUTE) {
-        wait = Math.max(wait, sentTimes[0] + 60_000 - now);
-      }
-      if (wait) await sleep(wait);
-      lastSent = Date.now();
-      sentTimes.push(lastSent);
-      return fn();
+  function schedule(fn, urgent) {
+    return new Promise((resolve, reject) => {
+      queues[urgent ? 'urgent' : 'background'].push({ fn, resolve, reject });
+      pump();
     });
-    chain = run.catch(() => {});
-    return run;
+  }
+
+  async function pump() {
+    if (pumping) return;
+    pumping = true;
+    try {
+      while (queues.urgent.length || queues.background.length) {
+        const now = Date.now();
+        while (sentTimes.length && now - sentTimes[0] > 60_000) sentTimes.shift();
+        let wait = Math.max(0, lastSent + MIN_GAP_MS - now);
+        if (sentTimes.length >= PER_MINUTE) {
+          wait = Math.max(wait, sentTimes[0] + 60_000 - now);
+        }
+        if (wait) await sleep(wait);
+        // Picked after the wait, so an urgent request that arrived meanwhile goes first.
+        const next = queues.urgent.shift() || queues.background.shift();
+        lastSent = Date.now();
+        sentTimes.push(lastSent);
+        try { next.resolve(await next.fn()); } catch (err) { next.reject(err); }
+      }
+    } finally {
+      pumping = false;
+    }
   }
 
   function sign(method, varString, timestamp) {
@@ -150,7 +165,7 @@ export function createAroFloClient(config) {
     return body.zoneresponse || {};
   }
 
-  async function get(params) {
+  async function get(params, { urgent = false } = {}) {
     if (!secretKey || !uEncoded || !pEncoded || !orgEncoded) {
       throw new AroFloError('AroFlo credentials are not set (AROFLO_* settings)', 'config');
     }
@@ -161,7 +176,7 @@ export function createAroFloClient(config) {
         const varString = params
           .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
           .join('&');
-        const result = await schedule(() => sendOnce(varString));
+        const result = await schedule(() => sendOnce(varString), urgent);
         stats.lastSuccessAt = new Date().toISOString();
         return result;
       } catch (err) {

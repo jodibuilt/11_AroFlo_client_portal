@@ -1,7 +1,9 @@
 // What the portal shows, read entirely from the local copy kept by sync.js.
 // Page views never call AroFlo; the only exception is a photo nobody has opened
 // before for a client no portal user is linked to (see getFile).
+import fs from 'node:fs';
 import path from 'node:path';
+import { thumbnail, SHRUNK_TYPE } from './images.js';
 
 const CLIENT_VISIBLE = new Set(['show client', 'show all']);
 
@@ -54,20 +56,45 @@ export function createPortalData({ store, sync }) {
 
     // canFetch() is asked only when the photo must come from AroFlo first and no fetch
     // for this job is already running; returning false gives { limited: true }.
-    async getFile(taskId, docId, clientIds, settings, canFetch = () => true) {
+    async getFile(taskId, docId, clientIds, settings, canFetch = () => true, { thumb = false } = {}) {
       const job = accessibleJob(taskId, clientIds, settings);
       if (!job) return null;
       let photo = store.getPhoto(taskId, docId);
       if (!photo || !visible(photo.filter, settings.fileVisibility)) return null;
       if (!photo.file) {
         if (!sync.isFetchingPhotos(taskId) && !canFetch()) return { limited: true };
-        await sync.fetchPhotosNow(taskId);
+        await sync.fetchPhotoNow(taskId, docId);
         photo = store.getPhoto(taskId, docId);
         if (!photo?.file) return null;
       }
-      return { contentType: photo.content_type, custOn: job.cust_on, compressed: Boolean(photo.compressed), filePath: path.join(store.fileDir, photo.file) };
+      const filePath = path.join(store.fileDir, photo.file);
+      const file = { contentType: photo.content_type, custOn: job.cust_on, compressed: Boolean(photo.compressed), filePath };
+      if (thumb) {
+        const thumbPath = await thumbFor(filePath);
+        if (thumbPath) return { ...file, contentType: SHRUNK_TYPE, filePath: thumbPath, sourcePath: filePath };
+      }
+      return file;
     },
   };
+}
+
+// Grid previews are made once from the cached photo and kept beside it (<hash>.thumb.bin).
+// The cache trim evicts them like any other file; they are remade when next needed.
+const making = new Map();
+async function thumbFor(filePath) {
+  const thumbPath = filePath.replace(/\.bin$/, '.thumb.bin');
+  if (thumbPath === filePath) return null;
+  if (await fs.promises.access(thumbPath).then(() => true, () => false)) return thumbPath;
+  if (!making.has(thumbPath)) {
+    making.set(thumbPath, (async () => {
+      const small = await thumbnail(await fs.promises.readFile(filePath));
+      if (!small) return null;
+      await fs.promises.writeFile(`${thumbPath}.tmp`, small);
+      await fs.promises.rename(`${thumbPath}.tmp`, thumbPath);
+      return thumbPath;
+    })().catch(() => null).finally(() => making.delete(thumbPath)));
+  }
+  return making.get(thumbPath);
 }
 
 function visible(filter, mode) {

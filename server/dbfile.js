@@ -3,6 +3,7 @@
 // one. On such hosts the database runs from local disk and is snapshotted back to the
 // persistent folder. Snapshots are written to a temp file and renamed into place, so the
 // saved copy is always a complete database.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -26,13 +27,45 @@ export function prepareLocalCopy(persistDir, localDir) {
   return localDir;
 }
 
-// Writes a consistent copy of the open database to the persistent folder.
-export function snapshotTo(handle, persistDir) {
+// Writes a consistent copy of the open database to the persistent folder. The copy is
+// made on local disk (VACUUM INTO blocks the server, and is quick only there), then
+// copied to the share without blocking. Temp names are unique: while Azure swaps
+// containers the old and new one run side by side, often with the same process id.
+// `stillWanted()` is asked just before the copy replaces the saved one, so a newer save
+// made meanwhile (on shutdown) is never overwritten by this older one.
+export function snapshotTo(handle, persistDir, localDir, stillWanted = () => true) {
   const target = path.join(persistDir, DB_FILE);
-  const temp = `${target}.tmp-${process.pid}`;
-  fs.rmSync(temp, { force: true });
-  handle.exec(`VACUUM INTO '${temp.replace(/'/g, "''")}'`);
-  fs.renameSync(temp, target);
-  // Journals from the old direct-on-share setup would not match the new file.
-  for (const suffix of SIDE_FILES) fs.rmSync(target + suffix, { force: true });
+  const id = `${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  const local = path.join(localDir, `${DB_FILE}.snapshot-${id}`);
+  const temp = `${target}.tmp-${id}`;
+  handle.exec(`VACUUM INTO '${local.replace(/'/g, "''")}'`);
+  return (async () => {
+    try {
+      await fs.promises.copyFile(local, temp);
+      if (!stillWanted()) return;
+      await fs.promises.rename(temp, target);
+      // Journals from the old direct-on-share setup would not match the new file.
+      for (const suffix of SIDE_FILES) await fs.promises.rm(target + suffix, { force: true });
+    } finally {
+      await fs.promises.rm(local, { force: true });
+      await fs.promises.rm(temp, { force: true });
+    }
+  })();
+}
+
+// Same, but finished before returning: for shutdown, when there is no time to wait on.
+export function snapshotToSync(handle, persistDir, localDir) {
+  const target = path.join(persistDir, DB_FILE);
+  const id = `${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  const local = path.join(localDir, `${DB_FILE}.snapshot-${id}`);
+  const temp = `${target}.tmp-${id}`;
+  try {
+    handle.exec(`VACUUM INTO '${local.replace(/'/g, "''")}'`);
+    fs.copyFileSync(local, temp);
+    fs.renameSync(temp, target);
+    for (const suffix of SIDE_FILES) fs.rmSync(target + suffix, { force: true });
+  } finally {
+    fs.rmSync(local, { force: true });
+    fs.rmSync(temp, { force: true });
+  }
 }

@@ -5,6 +5,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 let terserLoad = null;
 const loadTerser = () => (terserLoad ??= import('terser').catch((err) => {
@@ -31,7 +32,7 @@ const minifyCss = (source) => source
 
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
-// Returns get(urlPath) -> { body, type, etag } for a .js/.css file under publicDir, or null.
+// Returns get(urlPath) -> { body, gzip, type, etag } for a .js/.css file under publicDir, or null.
 export function createAssets(publicDir) {
   const root = path.resolve(publicDir);
   const cache = new Map(); // urlPath -> { mtimeMs, built: Promise }
@@ -55,5 +56,6 @@ async function build(file, ext) {
   const source = await fs.promises.readFile(file, 'utf8');
   const body = ext === '.js' ? await minifyJs(source, file) : minifyCss(source);
   const etag = `"${crypto.createHash('sha256').update(body).digest('base64url').slice(0, 27)}"`;
-  return { body, type: TYPES[ext], etag };
+  // Compressed once here rather than on every request.
+  return { body, gzip: zlib.gzipSync(body, { level: 9 }), type: TYPES[ext], etag };
 }

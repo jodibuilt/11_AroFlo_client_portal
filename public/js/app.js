@@ -340,8 +340,9 @@ function notesPanel(job) {
       : null);
 }
 
-const photoUrl = (p, download) =>
-  `/api/photos/${encodeURIComponent(p.id)}${download ? '?download=1' : ''}`;
+// size 'thumb' = small grid preview; the viewer and "Download" use the full photo.
+const photoUrl = (p, download, size) =>
+  `/api/photos/${encodeURIComponent(p.id)}${download ? '?download=1' : size ? `?size=${size}` : ''}`;
 
 function photosPanel(job) {
   // When every photo was uploaded at the same time, say it once in the heading rather
@@ -355,7 +356,7 @@ function photosPanel(job) {
     h('div', { class: 'photo-grid' }, job.photos.map((p, i) => {
       const caption = [p.comment ? h('b', {}, p.comment) : null, sharedTime ? null : h('span', {}, fmtDateTime(p.uploaded))].filter(Boolean);
       return h('button', { class: 'photo', type: 'button', onclick: () => openViewer(job, i), 'aria-label': `Open photo ${i + 1}${p.comment ? `: ${p.comment}` : ''}` },
-        h('img', { src: photoUrl(p), alt: '', loading: 'lazy', decoding: 'async' }),
+        h('img', { src: photoUrl(p, false, 'thumb'), alt: '', loading: 'lazy', decoding: 'async' }),
         caption.length ? h('span', { class: 'cap' }, caption) : null);
     })));
 }

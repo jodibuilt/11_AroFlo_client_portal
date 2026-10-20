@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import { openDatabase, DEFAULT_SETTINGS } from './db.js';
-import { prepareLocalCopy, snapshotTo } from './dbfile.js';
+import { prepareLocalCopy, snapshotTo, snapshotToSync } from './dbfile.js';
 import { createAroFloClient, AroFloError } from './aroflo.js';
 import { createMockClient } from './mock.js';
 import { createPortalData } from './data.js';
@@ -75,15 +75,30 @@ if (!HAS_AROFLO_LOGIN) {
 const db = openDatabase(LOCAL_DB_DIR ? prepareLocalCopy(DATA_DIR, LOCAL_DB_DIR) : DATA_DIR, { journalMode: SQLITE_JOURNAL_MODE });
 
 // Save the local database back to DATA_DIR whenever it has changed (checked every 30s),
-// and on shutdown.
+// and on shutdown. Saves run one at a time; the copy to the share doesn't block requests.
 let savedChanges = -1;
+let saving = Promise.resolve();
+let finalSaveDone = false;
 function saveDatabase() {
+  if (!LOCAL_DB_DIR) return saving;
+  saving = saving.then(async () => {
+    const changes = db.handle.prepare('SELECT total_changes() AS n').get().n;
+    if (changes === savedChanges || finalSaveDone) return;
+    try {
+      await snapshotTo(db.handle, DATA_DIR, LOCAL_DB_DIR, () => !finalSaveDone);
+      savedChanges = changes;
+    } catch (err) {
+      console.error(`Saving the database to ${DATA_DIR} failed: ${err.message}`);
+    }
+  });
+  return saving;
+}
+// Shutdown or crash: save right now, before the process ends.
+function saveDatabaseNow() {
   if (!LOCAL_DB_DIR) return;
-  const changes = db.handle.prepare('SELECT total_changes() AS n').get().n;
-  if (changes === savedChanges) return;
+  finalSaveDone = true;
   try {
-    snapshotTo(db.handle, DATA_DIR);
-    savedChanges = changes;
+    snapshotToSync(db.handle, DATA_DIR, LOCAL_DB_DIR);
   } catch (err) {
     console.error(`Saving the database to ${DATA_DIR} failed: ${err.message}`);
   }
@@ -271,9 +286,10 @@ app.use(ah(async (req, res, next) => {
   const asset = await assets(file);
   if (!asset) return notFound(res);
   // Admin script: never kept by a shared cache. Everything: re-checked on each load.
-  res.set({ 'Content-Type': asset.type, ETag: asset.etag, 'Cache-Control': adminScript ? 'private, no-cache' : 'no-cache' });
+  res.set({ 'Content-Type': asset.type, ETag: asset.etag, 'Cache-Control': adminScript ? 'private, no-cache' : 'no-cache', Vary: 'Accept-Encoding' });
   if (req.fresh) return res.status(304).end();
-  res.send(asset.body);
+  if (!req.acceptsEncodings('gzip')) return res.send(asset.body);
+  res.set('Content-Encoding', 'gzip').send(asset.gzip);
 }));
 app.use(express.static(path.join(ROOT, 'public'), { index: false, extensions: [] }));
 
@@ -437,7 +453,8 @@ app.get('/api/photos/:ref', requireUser, ah(async (req, res) => {
   const [taskId, docId] = unref.photo(req.params.ref);
   if (!taskId || !docId) return res.status(404).json({ error: 'File not found.' });
   const canFetch = () => (fetchLimiters[req.user.role] || fetchLimiters.client).hit(String(req.user.id));
-  const file = await portal.getFile(taskId, docId, allowedClientIds(req), db.getSettings(), canFetch);
+  const thumb = req.query.size === 'thumb' && req.query.download !== '1';
+  const file = await portal.getFile(taskId, docId, allowedClientIds(req), db.getSettings(), canFetch, { thumb });
   if (file?.limited) return res.status(429).json({ error: 'Too many new photos opened at once. Please wait a few minutes and try again.' });
   if (!file) return res.status(404).json({ error: 'File not found.' });
   // "Download" of a shrunk photo gives the full-resolution original from AroFlo (the
@@ -462,9 +479,10 @@ app.get('/api/photos/:ref', requireUser, ah(async (req, res) => {
     // Uploaded files are untrusted: never let one run script on our origin.
     'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
   });
-  // Mark the photo as recently viewed so the cache keeps it.
+  // Mark the photo (and its preview) as recently viewed so the cache keeps it.
   const now = new Date();
   fs.utimes(file.filePath, now, now, () => {});
+  if (file.sourcePath) fs.utimes(file.sourcePath, now, now, () => {});
   res.sendFile(file.filePath);
 }));
 
@@ -722,7 +740,7 @@ process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
   try {
-    saveDatabase();
+    saveDatabaseNow();
   } finally {
     process.exit(1);
   }
@@ -737,7 +755,7 @@ const server = app.listen(PORT, () => {
 // App Service sends SIGTERM on restart/redeploy: finish in-flight requests, then close the database.
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.once(signal, () => {
-    saveDatabase();
+    saveDatabaseNow();
     server.close(() => {
       db.close();
       process.exit(0);

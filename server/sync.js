@@ -24,6 +24,7 @@
 // time someone opens the job. Photos of older jobs are stored shrunk. The cache is capped
 // (least recently viewed photos are evicted first).
 import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
 import { shrink, cleanFullSize, canProcess, SHRUNK_TYPE } from './images.js';
@@ -65,23 +66,33 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
     if (!inflight.has(key)) inflight.set(key, fn().finally(() => inflight.delete(key)));
     return inflight.get(key);
   };
+  // Fires `${taskId}|${docId}` as each photo is saved, so someone waiting on one photo
+  // gets it straight away instead of after the whole job's photos are done.
+  const photoSaved = new EventEmitter();
+  photoSaved.setMaxListeners(0);
+  // Background photo work (pre-download, compression, cleaning) waits while someone is
+  // waiting on a photo, so it doesn't take the server's only CPU core away from them.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const yieldToVisitors = async () => {
+    for (let i = 0; i < 120 && inflight.size; i++) await sleep(500);
+  };
   let running = null;
   let runAgain = false;
   let soonTimer = null;
 
   // ---------- AroFlo → local records ----------
-  async function fetchTask(taskId) {
+  async function fetchTask(taskId, urgent = false) {
     const resp = await aroflo.get([
       ['zone', 'tasks'],
       ['where', `and|taskid|=|${taskId}`],
       ['join', 'notes'],
       ['join', 'documentsandphotos'],
       ['page', '1'],
-    ]);
+    ], { urgent });
     return (resp.tasks || []).find((t) => t.taskid === taskId) || null;
   }
 
-  async function applyTask(task, { downloadAll = false } = {}) {
+  async function applyTask(task, { downloadAll = false, urgent = false } = {}) {
     // A job counts as completed when AroFlo has a completed date for it, whatever its
     // status or substatus (Completed, Ready for Invoicing, To Be Reviewed, Archived, ...).
     const completedOn = normDate(task.completeddatetime || task.completeddate);
@@ -96,20 +107,24 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
       return;
     }
     store.saveJob(job);
-    if (downloadAll) await downloadPhotos(job);
+    if (downloadAll) await downloadPhotos(job, urgent);
   }
 
-  async function syncTask(taskId, opts) {
-    const task = await fetchTask(taskId);
+  async function syncTask(taskId, opts = {}) {
+    const task = await fetchTask(taskId, opts.urgent);
     if (!task) store.removeJob(taskId);
     else await applyTask(task, opts);
   }
 
-  async function downloadPhotos(job) {
+  async function downloadPhotos(job, urgent = false) {
     let failed = false;
     const keep = new Set(); // this job's files: never evicted by the trim below
-    for (const p of job.photos) {
+    // Same order as the job page shows them, so the first photos on screen arrive first.
+    const inPageOrder = [...job.photos].sort((a, b) =>
+      String(a.uploaded || '').localeCompare(String(b.uploaded || '')) || String(a.name || '').localeCompare(String(b.name || '')));
+    for (const p of inPageOrder) {
       if (store.getPhoto(job.taskId, p.id)?.file || !p.url) continue;
+      if (!urgent) await yieldToVisitors();
       try {
         const { contentType, body } = await aroflo.fetchDocument(p.url);
         if (!/^image\//i.test(contentType)) continue;
@@ -122,6 +137,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
         await fs.promises.writeFile(path.join(store.fileDir, file), clean?.body || body);
         store.setPhotoFile(job.taskId, p.id, file, clean?.type || contentType, Boolean(small));
         keep.add(file);
+        photoSaved.emit(`${job.taskId}|${p.id}`);
       } catch (err) {
         failed = true;
         log.warn(`Photo ${p.name} on job ${job.jobNumber} not downloaded yet: ${err.message}`);
@@ -333,6 +349,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
         const next = store.recentJobsMissingPhotos(compressBefore(), PREFETCH_PER_RUN * 2).find((id) => !prefetchTried.has(id));
         if (!next) break;
         prefetchTried.add(next);
+        await yieldToVisitors();
         await syncTask(next, { downloadAll: true });
         done++;
         if (done % 5 === 0) used = await cacheBytes();
@@ -350,6 +367,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
     cleaning = (async () => {
       if (!(await canProcess())) return;
       for (const name of store.fullSizeFiles()) {
+        await yieldToVisitors();
         const full = path.join(store.fileDir, name);
         const original = await fs.promises.readFile(full).catch(() => null);
         if (!original) { store.forgetPhotoFile(name); continue; }
@@ -375,6 +393,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
         const files = store.photosToCompress(compressBefore(), 50);
         if (!files.length) break;
         for (const name of files) {
+          await yieldToVisitors();
           const full = path.join(store.fileDir, name);
           const original = await fs.promises.readFile(full).catch(() => null);
           if (!original) { store.forgetPhotoFile(name); continue; }
@@ -453,7 +472,7 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
     status,
     start() {
       store.removeJobsOutsideActive();
-      setTimeout(() => trimPhotoCache().then(() => compressAgedPhotos()).then(() => cleanCachedPhotos()).then(() => prefetchRecentPhotos()), 15_000);
+      setTimeout(() => trimPhotoCache().then(() => (due('compressedAt', COMPRESS_EVERY) ? compressAgedPhotos() : null)).then(() => cleanCachedPhotos()).then(() => prefetchRecentPhotos()), 15_000);
       if (getSyncFrom()) store.removeJobsCompletedBefore(getSyncFrom());
       const schedule = (delay) => setTimeout(async () => {
         await run();
@@ -499,19 +518,26 @@ export function createSync({ aroflo, store, getIntervalMinutes = () => 60, getSy
     // "Download" when the cached copy has been shrunk.
     fetchOriginalPhoto(taskId, docId) {
       return once(`original|${taskId}|${docId}`, async () => {
-        const task = await fetchTask(taskId);
+        const task = await fetchTask(taskId, true);
         const doc = (task?.documentsandphotos || []).find((d) => d.documentid === docId);
         if (!doc?.url) return null;
         const original = await aroflo.fetchDocument(doc.url);
-        const clean = await cleanFullSize(original.body); // full resolution, no hidden metadata
+        const clean = await cleanFullSize(original.body, { maxEdge: 0 }); // full resolution, no hidden metadata
         return clean ? { contentType: clean.type, body: clean.body } : original;
       });
     },
     cleanCachedPhotos,
     // Used when someone opens a photo we haven't downloaded yet (e.g. admin previewing a
     // client nobody is linked to): one single-task fetch for fresh links, then download.
-    fetchPhotosNow(taskId) {
-      return once(`photos|${taskId}`, () => syncTask(taskId, { downloadAll: true }));
+    // Resolves when this photo is saved, or when the whole job's download ends (saved or not).
+    fetchPhotoNow(taskId, docId) {
+      const all = once(`photos|${taskId}`, () => syncTask(taskId, { downloadAll: true, urgent: true }));
+      const key = `${taskId}|${docId}`;
+      return new Promise((resolve, reject) => {
+        const saved = () => resolve();
+        photoSaved.once(key, saved);
+        all.then(resolve, reject).finally(() => photoSaved.off(key, saved));
+      });
     },
     isFetchingPhotos: (taskId) => inflight.has(`photos|${taskId}`),
   };
