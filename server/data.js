@@ -40,7 +40,8 @@ export function createPortalData({ store, sync }) {
         clientName: job.client_name,
         completed: job.completed,
         notes: store.notesForJob(taskId)
-          .filter((n) => visible(n.filter, settings.noteVisibility))
+          // Notes are always client-tagged only; Internal Only notes never leave the server.
+          .filter((n) => visible(n.filter, 'client'))
           .map(({ text, posted }) => ({ text, posted })),
         // `id` is AroFlo's document id: index.js swaps it for an encrypted reference.
         photos: store.photosForJob(taskId)

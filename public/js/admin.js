@@ -381,7 +381,6 @@ async function renderSettings() {
     try {
       await api('/api/admin/settings', { method: 'PUT', body: {
         portalName: settings.portalName,
-        noteVisibility: fd.get('noteVisibility'),
         fileVisibility: fd.get('fileVisibility'),
         includeArchived: includeArchived.checked,
         syncIntervalMinutes: Number(interval.value),
@@ -396,10 +395,6 @@ async function renderSettings() {
     h('div', { class: 'panel-body' },
       msg,
       h('div', { class: 'form-grid' },
-        h('fieldset', { class: 'field radio-group' },
-          h('legend', {}, 'Which notes can clients see?'),
-          radio('noteVisibility', 'client', 'Only notes shared with the client', 'Notes set to “Show Client” or “Show All” in AroFlo. Recommended.'),
-          radio('noteVisibility', 'all', 'All notes', 'Also shows “Internal Only” and “Internal Admin Only” notes.')),
         h('fieldset', { class: 'field radio-group' },
           h('legend', {}, 'Which photos can clients see?'),
           radio('fileVisibility', 'client', 'Only photos shared with the client', 'Photos set to “Show Client” or “Show All” in AroFlo. Recommended.'),

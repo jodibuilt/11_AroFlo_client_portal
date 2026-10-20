@@ -605,7 +605,7 @@ admin.get('/settings', (_req, res) => res.json({ settings: db.getSettings() }));
 admin.put('/settings', (req, res) => {
   const s = req.body || {};
   const next = {
-    noteVisibility: s.noteVisibility === 'all' ? 'all' : 'client',
+    noteVisibility: 'client',
     fileVisibility: s.fileVisibility === 'all' ? 'all' : 'client',
     includeArchived: s.includeArchived !== false,
     syncIntervalMinutes: SYNC_INTERVAL_CHOICES.includes(Number(s.syncIntervalMinutes)) ? Number(s.syncIntervalMinutes) : DEFAULT_SETTINGS.syncIntervalMinutes,
